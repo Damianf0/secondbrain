@@ -1,0 +1,64 @@
+[project]
+name = "secondbrain-backend"
+version = "0.1.0"
+description = "SecondBrain - API backend"
+readme = "../README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Damian Fagundez", email = "damian@workbench.com.ar" },
+]
+
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.12",
+
+    # Configuración
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+
+    # Base de datos
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14.0",
+    "psycopg[binary,pool]>=3.2.3",
+    "pgvector>=0.3.6",
+
+    # Vector DB
+    "qdrant-client>=1.12.0",
+
+    # Object storage
+    "minio>=7.2.10",
+
+    # LLM y embeddings
+    "ollama>=0.4.0",
+    "httpx>=0.27.0",
+
+    # Utilidades
+    "python-dateutil>=2.9.0",
+    "pyyaml>=6.0.2",
+
+    # Logging
+    "structlog>=24.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+asyncio_mode = "auto"

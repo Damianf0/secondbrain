@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# uv
+.venv/
+.python-version-cache
+
+# Variables de entorno (NUNCA commitear)
+.env
+.env.local
+.env.production
+
+# Datos del Vault — bajo ningún concepto al repo
+data/
+backups/
+
+# Logs
+*.log
+logs/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker overrides locales
+docker-compose.override.yml
+
+# Archivos temporales del proyecto
+tmp/
+*.tmp

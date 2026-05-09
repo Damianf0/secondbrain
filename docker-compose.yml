@@ -1,0 +1,277 @@
+# =====================================================
+# SecondBrain - Docker Compose
+# Sprint 0: Setup base
+# =====================================================
+# Servicios:
+#   - postgres    : DB relacional con pgvector
+#   - qdrant      : Vector DB
+#   - minio       : Object storage S3-compatible
+#   - ollama      : LLMs locales (con GPU NVIDIA)
+#   - whisper     : Transcripción de audio
+#   - backend     : FastAPI Python
+#   - frontend    : Streamlit panel admin
+#   - ollama-init : One-shot que descarga modelos al inicio
+# =====================================================
+
+services:
+
+  # ---------------------------------------------------
+  # PostgreSQL 16 con pgvector
+  # ---------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER requerido}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}
+      POSTGRES_DB: ${POSTGRES_DB:-secondbrain}
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - secondbrain-net
+
+  # ---------------------------------------------------
+  # Qdrant - Vector Database
+  # ---------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?QDRANT_API_KEY requerido}
+      QDRANT__LOG_LEVEL: INFO
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC API
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - secondbrain-net
+
+  # ---------------------------------------------------
+  # MinIO - Object Storage S3-compatible
+  # ---------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER requerido}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD requerido}
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./data/minio:/data
+    ports:
+      - "9000:9000"  # API S3
+      - "9001:9001"  # Consola web
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - secondbrain-net
+
+  # ---------------------------------------------------
+  # MinIO bootstrap - crea los buckets iniciales
+  # ---------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET_RAW: ${MINIO_BUCKET_RAW:-raw}
+      MINIO_BUCKET_DERIVED: ${MINIO_BUCKET_DERIVED:-derived}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+      mc mb --ignore-existing local/$$MINIO_BUCKET_RAW;
+      mc mb --ignore-existing local/$$MINIO_BUCKET_DERIVED;
+      mc mb --ignore-existing local/exports;
+      echo 'Buckets MinIO inicializados correctamente';
+      "
+    networks:
+      - secondbrain-net
+
+  # ---------------------------------------------------
+  # Ollama - LLMs locales con GPU CUDA
+  # ---------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./data/ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    environment:
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+      OLLAMA_KEEP_ALIVE: "30m"
+      OLLAMA_HOST: "0.0.0.0"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - secondbrain-net
+
+  # ---------------------------------------------------
+  # Ollama bootstrap - descarga modelos al primer arranque
+  # ---------------------------------------------------
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: ollama:11434
+      OLLAMA_MODEL_PRIMARY: ${OLLAMA_MODEL_PRIMARY:-gemma4:12b}
+      OLLAMA_MODEL_VISION: ${OLLAMA_MODEL_VISION:-qwen3-vl:8b}
+      OLLAMA_MODEL_EMBEDDING: ${OLLAMA_MODEL_EMBEDDING:-qwen3-embedding:4b}
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Descargando modelos Ollama (puede tardar 20-30 min en primera ejecución)...';
+      ollama pull $$OLLAMA_MODEL_PRIMARY;
+      ollama pull $$OLLAMA_MODEL_VISION;
+      ollama pull $$OLLAMA_MODEL_EMBEDDING;
+      echo 'Modelos descargados correctamente';
+      ollama list;
+      "
+    networks:
+      - secondbrain-net
+
+  # ---------------------------------------------------
+  # Whisper - Transcripción de audio
+  # ---------------------------------------------------
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      ASR_MODEL: ${WHISPER_MODEL:-large-v3-turbo}
+      ASR_ENGINE: faster_whisper
+      ASR_LANG: ${WHISPER_LANG:-es}
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    ports:
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/docs', timeout=2)\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    networks:
+      - secondbrain-net
+
+  # ---------------------------------------------------
+  # Backend - FastAPI Python
+  # ---------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      # Postgres
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Qdrant
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      # MinIO
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET_RAW: ${MINIO_BUCKET_RAW:-raw}
+      MINIO_BUCKET_DERIVED: ${MINIO_BUCKET_DERIVED:-derived}
+      MINIO_SECURE: "false"
+      # Ollama
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL_PRIMARY: ${OLLAMA_MODEL_PRIMARY:-gemma4:12b}
+      OLLAMA_MODEL_VISION: ${OLLAMA_MODEL_VISION:-qwen3-vl:8b}
+      OLLAMA_MODEL_EMBEDDING: ${OLLAMA_MODEL_EMBEDDING:-qwen3-embedding:4b}
+      # Whisper
+      WHISPER_URL: http://whisper:9000
+      # App
+      LOG_LEVEL: ${BACKEND_LOG_LEVEL:-info}
+      SECRET_KEY: ${BACKEND_SECRET_KEY:?BACKEND_SECRET_KEY requerido}
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./backend:/app
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - secondbrain-net
+
+  # ---------------------------------------------------
+  # Frontend - Streamlit panel admin
+  # ---------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKEND_URL: http://backend:8000
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "${FRONTEND_PORT:-8501}:8501"
+    networks:
+      - secondbrain-net
+
+# =====================================================
+# Networks
+# =====================================================
+networks:
+  secondbrain-net:
+    driver: bridge
