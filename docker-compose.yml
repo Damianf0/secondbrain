@@ -186,7 +186,7 @@ services:
       ASR_LANG: ${WHISPER_LANG:-es}
       TZ: ${TZ:-America/Argentina/Buenos_Aires}
     ports:
-      - "9000:9000"
+      - "9002:9000"  # 9000 está ocupado por MinIO; internamente sigue siendo :9000
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/docs', timeout=2)\" || exit 1"]
       interval: 30s
@@ -237,14 +237,15 @@ services:
       TZ: ${TZ:-America/Argentina/Buenos_Aires}
     volumes:
       - ./backend:/app
+      - backend-venv:/app/.venv  # preserva el venv entre reinicios
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 120s  # tiempo para que uv instale deps en primer arranque
     networks:
       - secondbrain-net
 
@@ -264,6 +265,7 @@ services:
       TZ: ${TZ:-America/Argentina/Buenos_Aires}
     volumes:
       - ./frontend:/app
+      - frontend-venv:/app/.venv  # preserva el venv entre reinicios
     ports:
       - "${FRONTEND_PORT:-8501}:8501"
     networks:
@@ -275,3 +277,10 @@ services:
 networks:
   secondbrain-net:
     driver: bridge
+
+# =====================================================
+# Volumes nombrados
+# =====================================================
+volumes:
+  backend-venv:
+  frontend-venv:

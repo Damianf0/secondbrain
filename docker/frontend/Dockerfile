@@ -21,11 +21,11 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock* ./
 
-RUN uv sync --frozen --no-install-project --no-dev || uv sync --no-install-project --no-dev
+RUN uv sync --no-install-project --no-dev
 
 COPY . .
 
-RUN uv sync --frozen --no-dev || uv sync --no-dev
+RUN uv sync --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
 

@@ -29,13 +29,13 @@ WORKDIR /app
 COPY pyproject.toml uv.lock* ./
 
 # Instalar dependencias en una venv local
-RUN uv sync --frozen --no-install-project --no-dev || uv sync --no-install-project --no-dev
+RUN uv sync --no-install-project --no-dev
 
 # Copiar el código
 COPY . .
 
 # Instalar el proyecto en sí
-RUN uv sync --frozen --no-dev || uv sync --no-dev
+RUN uv sync --no-dev
 
 # Variables runtime
 ENV PATH="/app/.venv/bin:$PATH"

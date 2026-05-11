@@ -32,6 +32,9 @@ logs/
 *.swp
 *.swo
 
+# Claude Code — config personal/local
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db
