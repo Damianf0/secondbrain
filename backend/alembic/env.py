@@ -3,9 +3,6 @@ Configuración de Alembic para migraciones.
 
 Lee DATABASE_URL del entorno (no de alembic.ini) para que funcione
 tanto en el container Docker como localmente.
-
-En Sprint 0 está vacío. Cuando agreguemos models en Sprint 1,
-acá registramos `target_metadata`.
 """
 
 import os
@@ -13,6 +10,10 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+# Importar models para que Alembic los detecte en autogenerate
+import app.models  # noqa: F401 — registra todos los models en Base.metadata
+from app.db.session import Base
 
 # Configuración del logger desde alembic.ini
 config = context.config
@@ -24,10 +25,18 @@ database_url = os.getenv("DATABASE_URL")
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url)
 
-# En Sprint 1+ acá importamos los models y ponemos:
-#   from app.db.models import Base
-#   target_metadata = Base.metadata
-target_metadata = None
+# Metadata con todos los models registrados
+target_metadata = Base.metadata
+
+# Schemas que manejamos con Alembic (excluye pg_catalog, information_schema, etc.)
+MANAGED_SCHEMAS = {"core", "media", "processing"}
+
+
+def include_object(object, name, type_, reflected, compare_to):  # noqa: A002
+    """Filtro para que autogenerate solo toque nuestros schemas."""
+    if type_ == "table":
+        return object.schema in MANAGED_SCHEMAS
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -39,6 +48,8 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         version_table_schema="public",
+        include_schemas=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -58,6 +69,8 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             version_table_schema="public",
+            include_schemas=True,
+            include_object=include_object,
         )
 
         with context.begin_transaction():
