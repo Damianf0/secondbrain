@@ -54,9 +54,13 @@ class Settings(BaseSettings):
     # Ollama
     # -------------------------------------------------
     ollama_url: str = "http://ollama:11434"
-    ollama_model_primary: str = "gemma4:12b"
+    ollama_model_primary: str = "qwen3:8b"
     ollama_model_vision: str = "qwen3-vl:8b"
     ollama_model_embedding: str = "qwen3-embedding:4b"
+    # qwen3-embedding:4b devuelve vectores de 2560 dimensiones
+    embedding_dim: int = 2560
+    qdrant_collection_messages: str = "messages"
+    qdrant_collection_facts: str = "facts"
 
     # -------------------------------------------------
     # Whisper
@@ -67,6 +71,25 @@ class Settings(BaseSettings):
     # Timezone
     # -------------------------------------------------
     tz: str = "America/Argentina/Buenos_Aires"
+
+    # -------------------------------------------------
+    # Worker continuo de colas (Sprint pos-5)
+    # -------------------------------------------------
+    worker_enabled: bool = True
+    worker_interval_s: int = 30
+    worker_batch_transcribe: int = 5
+    worker_batch_extract: int = 5
+    worker_batch_caption: int = 3
+    worker_batch_embed: int = 50
+    # Tagger: prioriza calidad sobre throughput. Batch chico, qwen3:8b, temp baja.
+    # Cada item tarda ~3-5s con el LLM, asi que con batch=3 cada tick aporta
+    # ~10-15s a la duración del tick. Subilo si vas a backfill masivo nocturno.
+    worker_batch_tagger: int = 3
+    # Ventana horaria (hora local, 0-23) en la que se permite correr la etapa
+    # `caption` (VLM pesado). Fuera de esa ventana se saltea para no competir por
+    # VRAM con el chat. Si start == end, el caption queda deshabilitado.
+    worker_caption_hour_start: int = 2
+    worker_caption_hour_end: int = 6
 
 
 @lru_cache

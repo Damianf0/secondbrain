@@ -2,6 +2,7 @@
 Models del schema `core`: entidades principales del sistema.
 
 - Persona: contacto canónico (resuelve alias, teléfonos, emails)
+- Conversacion: chat 1:1 o grupo, con flag para seguir/ignorar
 - Item: unidad mínima de información (mensaje, email, nota, etc.)
 """
 
@@ -38,8 +39,11 @@ class Persona(Base):
     aliases: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     telefono: Mapped[str | None] = mapped_column(String(50), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # yo / contacto / grupo / desconocido
+    # yo / contacto / desconocido (los grupos son `Conversacion`, no `Persona`)
     tipo: Mapped[str] = mapped_column(String(30), nullable=False, default="contacto")
+    # Opt-in: por defecto NO se sigue. Damian elige a quién indexar en el pipeline.
+    # (la Persona `tipo=yo` se crea con seguir=True explícitamente)
+    seguir: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     datos: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -56,6 +60,87 @@ class Persona(Base):
 
     def __repr__(self) -> str:
         return f"<Persona {self.nombre_canonico!r}>"
+
+
+class Conversacion(Base):
+    """
+    Hilo de conversación: un chat 1:1, un grupo de WhatsApp, un thread de Gmail.
+
+    El `conversation_id` es el identificador estable (teléfono E.164 para 1:1,
+    JID `@g.us` para grupos, thread_id de Gmail) y matchea `Item.conversation_id`.
+    Cuando llega un mensaje nuevo, el bridge/importador hace upsert acá para
+    tener metadata humana (nombre) y el flag `seguir`.
+    """
+
+    __tablename__ = "conversaciones"
+    __table_args__ = (
+        Index("ix_core_conversaciones_tipo_seguir", "tipo", "seguir"),
+        {"schema": "core"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    # Identificador estable que aparece en Item.conversation_id
+    conversation_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    # 1on1 / grupo / difusion / email / desconocido
+    tipo: Mapped[str] = mapped_column(String(30), nullable=False, default="1on1")
+    # Nombre para mostrar (nombre del grupo, nombre canónico del contacto, asunto del thread)
+    nombre_display: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    # Si se procesa o se ignora silenciosamente. Default true (capturamos todo, decidimos después).
+    seguir: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # Metadata extra (participantes conocidos del grupo, JID raw, fuente, etc.)
+    datos: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Conversacion {self.tipo}:{self.conversation_id!r}>"
+
+
+class Empresa(Base):
+    """
+    Empresa / organización canónica (cliente, proveedor, institución).
+
+    Igual que `Persona`, resuelve aliases. Se crea/enriquece cuando el tagger
+    detecta una empresa mencionada en un mensaje.
+    """
+
+    __tablename__ = "empresas"
+    __table_args__ = (
+        Index("ix_core_empresas_seguir", "seguir"),
+        {"schema": "core"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    nombre_canonico: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    aliases: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # cliente / proveedor / institucion / otra — libre
+    tipo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # opt-in, igual que personas
+    seguir: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    datos: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Empresa {self.nombre_canonico!r}>"
 
 
 class Item(Base):

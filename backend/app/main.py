@@ -11,8 +11,23 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.core.logging import configure_logging, get_logger
-from app.routers import health, test
+from app.routers import (
+    bridge,
+    chat,
+    contacts,
+    conversations,
+    embeddings,
+    extract,
+    health,
+    images,
+    imports,
+    tagger,
+    test,
+    transcribe,
+    worker as worker_router,
+)
 from app.services import VaultStorage
+from app.services.queue_worker import worker
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -36,7 +51,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("vault_buckets_ensure_failed", error=str(e))
 
+    # Worker continuo de colas
+    try:
+        await worker.start()
+    except Exception as e:  # noqa: BLE001
+        logger.error("worker_start_failed", error=str(e))
+
     yield
+
+    try:
+        await worker.stop()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("worker_stop_failed", error=str(e))
 
     logger.info("app_shutting_down")
 
@@ -61,6 +87,17 @@ app.add_middleware(
 # Registrar routers
 app.include_router(health.router)
 app.include_router(test.router)
+app.include_router(imports.router)
+app.include_router(bridge.router)
+app.include_router(contacts.router)
+app.include_router(conversations.router)
+app.include_router(tagger.router)
+app.include_router(embeddings.router)
+app.include_router(chat.router)
+app.include_router(transcribe.router)
+app.include_router(extract.router)
+app.include_router(images.router)
+app.include_router(worker_router.router)
 
 
 @app.get("/")

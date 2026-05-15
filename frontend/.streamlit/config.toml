@@ -1,0 +1,15 @@
+# Configuración de Streamlit para el panel de SecondBrain.
+# (Streamlit lee este archivo automáticamente desde el working dir.)
+
+[server]
+# Tamaño máximo de archivo subido, en MB. Default de Streamlit = 200.
+# Lo subimos para poder importar exports grandes de WhatsApp (.zip con multimedia).
+# Tip: el export "sin multimedia" (.txt) pesa poquísimo aunque sean años de chat —
+# usá ese salvo que realmente necesites las imágenes/audios (que hoy igual no se procesan).
+maxUploadSize = 4096
+
+# Mensajes de WebSocket también más grandes (por las cargas de archivos)
+maxMessageSize = 4096
+
+[browser]
+gatherUsageStats = false

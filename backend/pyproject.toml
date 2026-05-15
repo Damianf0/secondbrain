@@ -37,6 +37,14 @@ dependencies = [
     # Utilidades
     "python-dateutil>=2.9.0",
     "pyyaml>=6.0.2",
+    "phonenumbers>=8.13.0",  # normalización E.164 (Google libphonenumber)
+    "vobject>=0.9.8",  # parser de vCard (.vcf) para importar Google Contacts
+
+    # Extracción de texto de documentos (Sprint 6)
+    "pdfplumber>=0.11.0",  # PDFs con texto formateado
+    "python-docx>=1.1.2",  # .docx
+    "openpyxl>=3.1.5",  # .xlsx
+    "chardet>=5.2.0",  # detección de encoding para .txt/.csv
 
     # Logging
     "structlog>=24.4.0",

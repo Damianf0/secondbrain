@@ -1,6 +1,5 @@
 # =====================================================
 # SecondBrain - Docker Compose
-# Sprint 0: Setup base
 # =====================================================
 # Servicios:
 #   - postgres    : DB relacional con pgvector
@@ -10,6 +9,7 @@
 #   - whisper     : Transcripción de audio
 #   - backend     : FastAPI Python
 #   - frontend    : Streamlit panel admin
+#   - bridge      : Bridge WhatsApp en vivo (whatsapp-web.js) — Sprint 2
 #   - ollama-init : One-shot que descarga modelos al inicio
 # =====================================================
 
@@ -152,7 +152,7 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: ollama:11434
-      OLLAMA_MODEL_PRIMARY: ${OLLAMA_MODEL_PRIMARY:-gemma4:12b}
+      OLLAMA_MODEL_PRIMARY: ${OLLAMA_MODEL_PRIMARY:-qwen3:8b}
       OLLAMA_MODEL_VISION: ${OLLAMA_MODEL_VISION:-qwen3-vl:8b}
       OLLAMA_MODEL_EMBEDDING: ${OLLAMA_MODEL_EMBEDDING:-qwen3-embedding:4b}
     entrypoint: >
@@ -171,15 +171,11 @@ services:
   # Whisper - Transcripción de audio
   # ---------------------------------------------------
   whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    # CPU-only: liberamos los ~4.3 GB de VRAM que ocupaba large-v3-turbo en GPU.
+    # La transcripción es nocturna/async y los audios de WhatsApp son cortos:
+    # con faster_whisper int8 en CPU multinúcleo el rendimiento es aceptable.
+    image: onerahmet/openai-whisper-asr-webservice:latest
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     environment:
       ASR_MODEL: ${WHISPER_MODEL:-large-v3-turbo}
       ASR_ENGINE: faster_whisper
@@ -226,7 +222,7 @@ services:
       MINIO_SECURE: "false"
       # Ollama
       OLLAMA_URL: http://ollama:11434
-      OLLAMA_MODEL_PRIMARY: ${OLLAMA_MODEL_PRIMARY:-gemma4:12b}
+      OLLAMA_MODEL_PRIMARY: ${OLLAMA_MODEL_PRIMARY:-qwen3:8b}
       OLLAMA_MODEL_VISION: ${OLLAMA_MODEL_VISION:-qwen3-vl:8b}
       OLLAMA_MODEL_EMBEDDING: ${OLLAMA_MODEL_EMBEDDING:-qwen3-embedding:4b}
       # Whisper
@@ -262,12 +258,40 @@ services:
         condition: service_healthy
     environment:
       BACKEND_URL: http://backend:8000
+      BRIDGE_URL: http://bridge:3001
       TZ: ${TZ:-America/Argentina/Buenos_Aires}
     volumes:
       - ./frontend:/app
       - frontend-venv:/app/.venv  # preserva el venv entre reinicios
     ports:
       - "${FRONTEND_PORT:-8501}:8501"
+    networks:
+      - secondbrain-net
+
+  # ---------------------------------------------------
+  # Bridge WhatsApp en vivo (whatsapp-web.js)
+  # ---------------------------------------------------
+  bridge:
+    build:
+      context: ./bridge
+      dockerfile: ../docker/bridge/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BRIDGE_PORT: 3001
+      BACKEND_URL: http://backend:8000
+      BRIDGE_SESSION_PATH: /app/session
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      BRIDGE_CAPTURE_OUTGOING: ${BRIDGE_CAPTURE_OUTGOING:-true}
+      BRIDGE_INCLUDE_BROADCASTS: ${BRIDGE_INCLUDE_BROADCASTS:-false}
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./data/whatsapp-session:/app/session  # sesión de WhatsApp persistida
+    ports:
+      - "${BRIDGE_PORT:-3001}:3001"
+    shm_size: "1gb"  # chromium necesita /dev/shm holgado
     networks:
       - secondbrain-net
 

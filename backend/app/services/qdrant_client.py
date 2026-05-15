@@ -37,12 +37,12 @@ class QdrantService:
             details = []
             for name in collections:
                 info = self.client.get_collection(name)
+                status = getattr(info, "status", None)
                 details.append(
                     {
                         "name": name,
-                        "vectors_count": info.vectors_count,
-                        "points_count": info.points_count,
-                        "status": info.status.value if info.status else "unknown",
+                        "points_count": getattr(info, "points_count", None),
+                        "status": status.value if hasattr(status, "value") else str(status) if status else "unknown",
                     }
                 )
 
@@ -62,12 +62,7 @@ class QdrantService:
         vector_size: int,
         distance: str = "Cosine",
     ) -> bool:
-        """
-        Crea la collection si no existe.
-
-        Sprint 0: solo helper, en sprint siguiente lo usamos para crear
-        collections de mensajes, facts, etc.
-        """
+        """Crea la collection si no existe. Devuelve True si la creó, False si ya estaba."""
         from qdrant_client.models import Distance, VectorParams
 
         try:
@@ -88,13 +83,81 @@ class QdrantService:
                     distance=distance_map.get(distance, Distance.COSINE),
                 ),
             )
-            logger.info(
-                "qdrant_collection_created",
-                name=name,
-                size=vector_size,
-                distance=distance,
-            )
+            logger.info("qdrant_collection_created", name=name, size=vector_size, distance=distance)
             return True
         except Exception as e:
             logger.error("qdrant_ensure_collection_failed", name=name, error=str(e))
             raise
+
+    def upsert_points(
+        self,
+        collection: str,
+        points: list[dict[str, Any]],
+    ) -> int:
+        """
+        Inserta/actualiza puntos. Cada point: {"id": str|int, "vector": list[float], "payload": dict}.
+        Devuelve la cantidad de puntos enviados.
+        """
+        from qdrant_client.models import PointStruct
+
+        if not points:
+            return 0
+        structs = [
+            PointStruct(id=p["id"], vector=p["vector"], payload=p.get("payload") or {})
+            for p in points
+        ]
+        self.client.upsert(collection_name=collection, points=structs, wait=True)
+        return len(structs)
+
+    def search(
+        self,
+        collection: str,
+        vector: list[float],
+        limit: int = 10,
+        query_filter: dict[str, Any] | None = None,
+        score_threshold: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Búsqueda por similitud. `query_filter` admite la forma simple
+        {"must": [{"key": ..., "match": {"value": ...}}, ...]} de qdrant.
+        Devuelve [{"id", "score", "payload"}].
+        """
+        from qdrant_client.models import Filter
+
+        flt = Filter(**query_filter) if query_filter else None
+        res = self.client.query_points(
+            collection_name=collection,
+            query=vector,
+            limit=limit,
+            query_filter=flt,
+            score_threshold=score_threshold,
+            with_payload=True,
+        )
+        return [{"id": str(p.id), "score": p.score, "payload": p.payload or {}} for p in res.points]
+
+    def count(self, collection: str) -> int:
+        """Cantidad de puntos en la collection (0 si no existe)."""
+        try:
+            return self.client.count(collection_name=collection, exact=True).count
+        except Exception:  # noqa: BLE001
+            return 0
+
+    def collection_exists(self, name: str) -> bool:
+        try:
+            return name in [c.name for c in self.client.get_collections().collections]
+        except Exception:  # noqa: BLE001
+            return False
+
+    def delete_by_item(self, collection: str, item_id: str) -> None:
+        """Borra todos los puntos cuyo payload.item_id == item_id."""
+        from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
+
+        if not self.collection_exists(collection):
+            return
+        self.client.delete(
+            collection_name=collection,
+            points_selector=FilterSelector(
+                filter=Filter(must=[FieldCondition(key="item_id", match=MatchValue(value=str(item_id)))])
+            ),
+            wait=True,
+        )

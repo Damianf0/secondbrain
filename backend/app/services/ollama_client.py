@@ -17,6 +17,15 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 settings = get_settings()
 
+# Modelos con "thinking" / reasoning interno. Para nuestro uso (extracción JSON)
+# el thinking solo gasta tokens y arruina la latencia, así que lo apagamos.
+_THINKING_MODEL_HINTS = ("qwen3", "deepseek-r1", "qwq", "magistral", "phi4-reasoning")
+
+
+def _is_thinking_model(model: str) -> bool:
+    m = (model or "").lower()
+    return any(h in m for h in _THINKING_MODEL_HINTS)
+
 
 class OllamaService:
     """Servicio para interactuar con Ollama local."""
@@ -75,6 +84,9 @@ class OllamaService:
             }
             if format is not None:
                 kwargs["format"] = format
+            # Apagar el reasoning interno en modelos thinking (qwen3, etc.)
+            if _is_thinking_model(model):
+                kwargs["think"] = False
 
             response = self.client.chat(**kwargs)
             duration_ms = int((time.time() - start) * 1000)
@@ -95,22 +107,37 @@ class OllamaService:
             logger.error("ollama_generate_failed", model=model, error=str(e))
             raise
 
-    def embed(self, text: str, model: str | None = None) -> dict[str, Any]:
+    def embed(
+        self,
+        text: str,
+        model: str | None = None,
+        *,
+        force_cpu: bool = False,
+    ) -> dict[str, Any]:
         """
         Genera un vector embedding del texto.
 
         Args:
             text: el texto a embebir
             model: nombre del modelo (default: model_embedding)
+            force_cpu: si True, fuerza el embedding a CPU (num_gpu=0). Útil para
+                queries únicas del chat: evita el swap caro entre el modelo de
+                embedding y el modelo de generación que comparten VRAM. El
+                embedding de una query corta en CPU tarda ~1-3s, mucho menos
+                que los ~10-15s del swap.
 
         Returns:
             dict con 'embedding' (list[float]), 'dimensions', 'duration_ms'
         """
         model = model or settings.ollama_model_embedding
+        options = {"num_gpu": 0} if force_cpu else None
 
         start = time.time()
         try:
-            response = self.client.embed(model=model, input=text)
+            if options:
+                response = self.client.embed(model=model, input=text, options=options)
+            else:
+                response = self.client.embed(model=model, input=text)
             duration_ms = int((time.time() - start) * 1000)
 
             embedding = response.embeddings[0] if response.embeddings else []
@@ -125,11 +152,27 @@ class OllamaService:
             logger.error("ollama_embed_failed", model=model, error=str(e))
             raise
 
+    def embed_many(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+        """Embebe una lista de textos en una sola llamada. Devuelve lista de vectores (en orden)."""
+        model = model or settings.ollama_model_embedding
+        if not texts:
+            return []
+        try:
+            response = self.client.embed(model=model, input=texts)
+            return list(response.embeddings or [])
+        except Exception as e:
+            logger.error("ollama_embed_many_failed", model=model, n=len(texts), error=str(e))
+            raise
+
     def vision(
         self,
         prompt: str,
         image_bytes: bytes,
         model: str | None = None,
+        *,
+        system: str | None = None,
+        temperature: float = 0.0,
+        format: str | dict | None = None,
     ) -> dict[str, Any]:
         """
         Procesa una imagen con un VLM.
@@ -138,31 +181,41 @@ class OllamaService:
             prompt: la pregunta sobre la imagen
             image_bytes: la imagen como bytes
             model: VLM (default: model_vision)
+            system: system prompt opcional
+            temperature: 0.0 = determinístico
+            format: 'json' para forzar JSON, o un schema dict
         """
         import base64
 
         model = model or settings.ollama_model_vision
         image_b64 = base64.b64encode(image_bytes).decode("ascii")
 
+        messages: list[dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt, "images": [image_b64]})
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "options": {"temperature": temperature},
+        }
+        if format is not None:
+            kwargs["format"] = format
+        if _is_thinking_model(model):
+            kwargs["think"] = False
+
         start = time.time()
         try:
-            response = self.client.chat(
-                model=model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt,
-                        "images": [image_b64],
-                    }
-                ],
-                options={"temperature": 0.0},
-            )
+            response = self.client.chat(**kwargs)
             duration_ms = int((time.time() - start) * 1000)
 
             return {
                 "response": response.message.content,
                 "model": response.model,
                 "duration_ms": duration_ms,
+                "tokens_input": response.prompt_eval_count or 0,
+                "tokens_output": response.eval_count or 0,
             }
         except Exception as e:
             logger.error("ollama_vision_failed", model=model, error=str(e))

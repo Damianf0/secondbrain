@@ -34,6 +34,10 @@ logs/
 
 # Claude Code — config personal/local
 .claude/settings.local.json
+.claude/*.lock
+
+# Exports personales (PII) — vCard de contactos, etc.
+*.vcf
 
 # OS
 .DS_Store
