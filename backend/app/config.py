@@ -56,9 +56,10 @@ class Settings(BaseSettings):
     ollama_url: str = "http://ollama:11434"
     ollama_model_primary: str = "qwen3:8b"
     ollama_model_vision: str = "qwen3-vl:8b"
-    ollama_model_embedding: str = "qwen3-embedding:4b"
-    # qwen3-embedding:4b devuelve vectores de 2560 dimensiones
-    embedding_dim: int = 2560
+    ollama_model_embedding: str = "bge-m3"
+    # bge-m3 devuelve vectores de 1024 dimensiones (multilingüe, mejor para español
+    # rioplatense que qwen3-embedding según el A/B del 2026-05-16)
+    embedding_dim: int = 1024
     qdrant_collection_messages: str = "messages"
     qdrant_collection_facts: str = "facts"
 
@@ -85,6 +86,11 @@ class Settings(BaseSettings):
     # Cada item tarda ~3-5s con el LLM, asi que con batch=3 cada tick aporta
     # ~10-15s a la duración del tick. Subilo si vas a backfill masivo nocturno.
     worker_batch_tagger: int = 3
+    # Ventana de auto-encolado del tagger desde el embedder (en días). Items
+    # más viejos NO se encolan al tagger automáticamente. Sirve para no
+    # llenar la cola con backfill histórico de baja relevancia. Para taggear
+    # items viejos puntualmente, usar el endpoint /api/tagger/item/{id}.
+    tagger_auto_window_days: int = 30
     # Ventana horaria (hora local, 0-23) en la que se permite correr la etapa
     # `caption` (VLM pesado). Fuera de esa ventana se saltea para no competir por
     # VRAM con el chat. Si start == end, el caption queda deshabilitado.

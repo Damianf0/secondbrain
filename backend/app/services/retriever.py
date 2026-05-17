@@ -99,10 +99,9 @@ def recuperar(
     if not qd.collection_exists(settings.qdrant_collection_messages):
         return []
 
-    # Forzamos el embedding de la query del chat a CPU para no swappear el
-    # modelo de generación (qwen3:8b) que queremos mantener caliente en GPU.
-    # El embedder del worker (batches grandes) sigue usando GPU por defecto.
-    qvec = ollama.embed(pregunta, force_cpu=True)["embedding"]
+    # bge-m3 pesa solo ~1.2 GB en VRAM y convive con qwen3:8b (5.2 GB) sin
+    # forzar swap (post-migración 2026-05-16). El embed va a GPU normal.
+    qvec = ollama.embed(pregunta)["embedding"]
     qfilter = _build_filter(persona_id, conversation_id)
     desde_dt = _parse_dt(fecha_desde)
     hasta_dt = _parse_dt(fecha_hasta)

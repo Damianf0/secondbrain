@@ -288,11 +288,19 @@ def procesar_jobs(db: Session, limit: int = 50) -> dict:
                 fallidos += 1
             else:
                 r = embeber_item(db, item, qd=qd, ollama=ollama)
-                # Encolar el tagger si el item todavía no fue taggeado. Import
-                # local para evitar circulares con tagger ↔ embedder.
+                # Encolar el tagger si el item todavía no fue taggeado Y está
+                # dentro de la ventana de relevancia (últimos 30 días).
+                # El tagger es caro (qwen3:8b ~5s/item) y queremos enfocarlo
+                # en lo reciente. Import local para evitar circular con tagger.
                 if not (item.datos or {}).get("tagged_at"):
-                    from app.services.tagger import encolar_job_tagger
-                    encolar_job_tagger(db, item.id)
+                    from datetime import timedelta
+                    en_ventana = (
+                        item.fecha is not None
+                        and item.fecha >= datetime.now(timezone.utc) - timedelta(days=settings.tagger_auto_window_days)
+                    )
+                    if en_ventana:
+                        from app.services.tagger import encolar_job_tagger
+                        encolar_job_tagger(db, item.id)
                 job.estado = "completado"
                 job.resultado = r
                 job.completed_at = datetime.now(timezone.utc)
