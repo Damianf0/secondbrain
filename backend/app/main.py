@@ -21,6 +21,7 @@ from app.routers import (
     health,
     images,
     imports,
+    panel,
     tagger,
     test,
     transcribe,
@@ -98,6 +99,7 @@ app.include_router(transcribe.router)
 app.include_router(extract.router)
 app.include_router(images.router)
 app.include_router(worker_router.router)
+app.include_router(panel.router)
 
 
 @app.get("/")

@@ -34,6 +34,22 @@ from app.services.ollama_client import OllamaService
 logger = get_logger(__name__)
 settings = get_settings()
 
+
+# ---------------------------------------------------------------------------
+# Runtime config — mutable desde el panel (/api/panel/config/tagger)
+# ---------------------------------------------------------------------------
+
+_RUNTIME_CONFIG: dict[str, object] = {
+    "model": settings.ollama_model_primary,
+    "temperature": 0.1,
+}
+
+
+def runtime_config() -> dict[str, object]:
+    """Devuelve el dict mutable de config runtime. Editable in-place desde el router del panel."""
+    return _RUNTIME_CONFIG
+
+
 # Nombres que NO cuentan como "persona mencionada" (es el dueño del sistema)
 _YO_ALIASES = {"damian", "dami", "damián", "yo", "damian fagundez", "damian orozco"}
 
@@ -108,15 +124,20 @@ def _extraer_json(texto: str) -> dict | None:
 
 
 def taggear_texto(item: Item, sender_name: str, chat_name: str, model: str | None = None) -> dict:
-    """Llama al LLM y devuelve {ok, resultado|error, raw, model, duration_ms, tokens...}."""
+    """Llama al LLM y devuelve {ok, resultado|error, raw, model, duration_ms, tokens...}.
+
+    Si `model` es None se usa el modelo del runtime_config (editable desde el panel).
+    """
     ollama = OllamaService()
     prompt = _build_user_prompt(item, sender_name, chat_name)
+    use_model = model or str(_RUNTIME_CONFIG.get("model") or settings.ollama_model_primary)
+    use_temp = float(_RUNTIME_CONFIG.get("temperature") or 0.1)
     try:
         resp = ollama.generate(
             prompt=prompt,
-            model=model or settings.ollama_model_primary,
+            model=use_model,
             system=SYSTEM_PROMPT,
-            temperature=0.1,
+            temperature=use_temp,
             format="json",
         )
     except Exception as e:  # noqa: BLE001
@@ -396,8 +417,11 @@ def persistir_tagging(db: Session, item: Item, resultado: dict, *, model: str) -
 
 
 def taggear_item(db: Session, item: Item, *, model: str | None = None) -> dict:
-    """Taggea un Item de punta a punta (LLM + persistencia). Hace flush, no commit."""
-    model = model or settings.ollama_model_primary
+    """Taggea un Item de punta a punta (LLM + persistencia). Hace flush, no commit.
+
+    `model` opcional override del runtime_config.
+    """
+    model = model or str(_RUNTIME_CONFIG.get("model") or settings.ollama_model_primary)
     sender = db.get(Persona, item.persona_id) if item.persona_id else None
     sender_name = (sender.nombre_canonico if sender else (item.datos or {}).get("sender_name")) or "alguien"
     conv = db.execute(
@@ -453,7 +477,7 @@ def procesar_jobs(db: Session, limit: int = 3) -> dict:
     from sqlalchemy import func as _func  # local para no contaminar el namespace
 
     limit = max(1, min(limit, 50))
-    model = settings.ollama_model_primary
+    model = str(_RUNTIME_CONFIG.get("model") or settings.ollama_model_primary)
 
     # Priorizamos items más recientes primero (POC: lo último siempre es lo
     # más útil para validar). Empate por created_at del job.

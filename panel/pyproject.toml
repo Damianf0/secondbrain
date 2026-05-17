@@ -1,0 +1,23 @@
+[project]
+name = "secondbrain-panel"
+version = "0.1.0"
+description = "Panel de control de escritorio para SecondBrain — orquesta el stack Docker, monitorea colas y dispara tareas del worker sin depender del browser."
+requires-python = ">=3.12"
+dependencies = [
+    "PySide6>=6.7.0",
+    "httpx>=0.27.0",
+    "psutil>=6.0.0",
+]
+
+[project.scripts]
+secondbrain-panel = "secondbrain_panel.app:main"
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["secondbrain_panel"]
