@@ -1,7 +1,9 @@
 # SecondBrain — Pipeline técnico (POC)
 
-> **Estado al 2026-05-16** · Documento de referencia para evaluación del equipo
+> **Estado al 2026-05-17** · Documento de referencia para evaluación del equipo
 > Todos los números son medidos sobre la instalación real corriendo en el equipo de Damian (i7-10th gen, 32GB RAM, RTX 3070 Ti 8GB VRAM, Windows 11 + WSL2 + Docker Desktop).
+>
+> Cambios desde el snapshot del 2026-05-16: **migración del modelo de embeddings** de `qwen3-embedding:4b` (2560 dim) a `bge-m3` (1024 dim) tras A/B con datos reales. Como bge-m3 pesa ~1.2 GB en VRAM contra ~3.8 GB del anterior, **convive con qwen3:8b sin swap** y se eliminó el hack `force_cpu` del chat. Los conteos de items embebidos reflejan el re-embed parcial en curso (ver § 9).
 
 ---
 
@@ -32,18 +34,19 @@ El sistema tiene cuatro flujos principales:
 
 | Métrica | Valor |
 |---|---|
-| Items totales en core.items | **75.702** |
-| Items embebidos en Qdrant | **75.690** (99,98%) |
-| Items taggeados (procesamiento completo) | **617** + 631 en cola |
-| Personas canónicas | 993 |
-| Empresas | 79 |
-| Conversaciones | 113 |
-| Facts estructurados | 871 |
-| Promesas detectadas | 28 |
-| Transacciones detectadas | 11 |
-| Vectores en Qdrant `messages` | 75.683 |
-| Vectores en Qdrant `facts` | 780 |
-| Tiempo de respuesta del chat (warm) | **~2-5 s** |
+| Items totales en core.items | **75.874** |
+| Items embebidos en Qdrant (bge-m3) | **13.990** (18,4%) — los más recientes; el resto re-embebe a demanda |
+| Items taggeados (procesamiento completo) | **2.880** (3,8%) |
+| Personas canónicas | 996 |
+| Empresas | 157 |
+| Conversaciones | 122 |
+| Facts estructurados | 3.128 |
+| Promesas detectadas | 74 |
+| Transacciones detectadas | 38 |
+| Menciones | 801 |
+| Vectores en Qdrant `messages` (1024 dim) | 13.990 |
+| Vectores en Qdrant `facts` (1024 dim) | 3.122 |
+| Tiempo de respuesta del chat (warm) | **~2 s** |
 
 ---
 
@@ -93,7 +96,8 @@ Servidos por Ollama (`/api/generate`, `/api/embed`, `/api/chat`). Modelos descar
 
 | Modelo | Tamaño | Familia | Params | Uso actual |
 |---|---|---|---|---|
-| `qwen3-embedding:4b` | 2.50 GB | qwen3 | 4.0B | **Embeddings** (mensajes + facts). 2560 dim |
+| **`bge-m3`** | **~1.2 GB** | bge | 568M | **Embeddings** (mensajes + facts). 1024 dim. Multilingüe, ganador del A/B del 2026-05-16 con datos reales |
+| `qwen3-embedding:4b` | 2.50 GB | qwen3 | 4.0B | Reserva (modelo anterior, 2560 dim) |
 | `qwen3:4b` | 2.50 GB | qwen3 | 4.0B | Reserva |
 | `gemma3:4b` | 3.34 GB | gemma3 | 4.3B | Reserva (multimodal, candidato a reemplazo de qwen3-vl) |
 | `aya-expanse:8b` | 5.06 GB | command-r | 8.0B | Reserva |
@@ -126,7 +130,7 @@ Páginas de Streamlit para subir audios, documentos (PDF/DOCX/XLSX) e imágenes 
 
 El sistema mantiene `core.personas` con `nombre_canonico` + `aliases` (jsonb) + `telefono`. Cuando llega un mensaje, se resuelve la persona por teléfono → match canónico → si no existe, se crea. El campo `seguir` (default `True` en conversaciones) permite excluir chats irrelevantes del procesamiento masivo.
 
-Importar vCard (`backend/app/services/vcard_parser.py`) ayuda a pre-cargar 993 contactos con sus nombres reales, así los chats nuevos aparecen ya con nombre humano en lugar de un teléfono.
+Importar vCard (`backend/app/services/vcard_parser.py`) ayuda a pre-cargar 996 contactos con sus nombres reales, así los chats nuevos aparecen ya con nombre humano en lugar de un teléfono.
 
 ---
 
@@ -141,7 +145,7 @@ Cinco etapas en cola, drenadas por un **worker continuo** (`backend/app/services
 | `transcribe` | Audio en MinIO | `item.contenido` con texto + `transcripcion_at` | Whisper Large V3 Turbo (faster_whisper, **CPU int8**) | 5 | CPU multinúcleo | 24/7 |
 | `extract` | PDF/DOCX/XLSX en MinIO | `item.contenido` con texto plano | pdfplumber / python-docx / openpyxl | 5 | CPU | 24/7 |
 | `caption` | Imagen en MinIO | `item.contenido` con `categoria + OCR + descripcion + entidades` | qwen3-vl:8b | 3 | **GPU** | **02:00 - 06:00 local** (ventana nocturna) |
-| `embed` | Texto en `item.contenido` | Vector 2560-dim en Qdrant `messages` + `facts` | qwen3-embedding:4b | 50 | GPU (worker) | 24/7 |
+| `embed` | Texto en `item.contenido` | Vector 1024-dim en Qdrant `messages` + `facts` | **bge-m3** | 50 | GPU | 24/7 |
 | `tagger` | `item.contenido` (texto) | Resumen, tono, sentimiento, personas/empresas, **facts, promesas, transacciones, menciones** | qwen3:8b | 3 | GPU | 24/7 |
 
 ### 6.2 Encadenamiento
@@ -165,19 +169,21 @@ El re-encadenado `tagger → embed` es lo que hace que el chat empiece a tener r
 
 ### 6.3 Por qué caption corre solo de noche
 
-El `qwen3-vl:8b` pesa 6.14 GB en VRAM. Si se carga durante el día, no queda lugar para que el chat tenga el qwen3:8b (5.23 GB) caliente — Ollama haría swap entre los dos en cada interacción. La ventana 02:00-06:00 garantiza que ningún VLM compita con el chat. Configurable en `.env`: `WORKER_CAPTION_HOUR_START`, `WORKER_CAPTION_HOUR_END`.
+El `qwen3-vl:8b` pesa 6.14 GB en VRAM. Si se carga durante el día, no queda lugar para que el chat tenga el qwen3:8b (5.23 GB) caliente — Ollama haría swap entre los dos en cada interacción. La ventana 02:00-06:00 garantiza que ningún VLM compita con el chat. (El embed con bge-m3 sí convive durante el día porque pesa solo ~1.2 GB.) Configurable en `.env`: `WORKER_CAPTION_HOUR_START`, `WORKER_CAPTION_HOUR_END`.
 
 Implementación: `queue_worker._caption_en_ventana()` chequea la hora local antes de delegar a `imager.procesar_jobs`. Fuera de ventana, devuelve `{"saltado": "fuera_de_ventana"}`.
 
-### 6.4 Auto-priorización del tagger
+### 6.4 Auto-priorización del tagger y ventana de auto-encolado
 
 El `tagger.procesar_jobs` ordena por `Item.fecha DESC, Job.created_at ASC`. Items más recientes se procesan primero — POC: lo último que llega es lo más útil para validar.
 
-### 6.5 Throughput medido (al 2026-05-16)
+Además, el auto-encolado desde el `embedder` solo dispara al tagger si el item está dentro de la **ventana de 30 días** (`tagger_auto_window_days`, configurable). Items más viejos quedan embebidos pero sin auto-tagging — para taggearlos hay endpoint manual o queue masivo desde el panel. Esto evita que un backfill histórico bloquee la cola del tagger (qwen3:8b es caro: ~5 s/item).
+
+### 6.5 Throughput medido (al 2026-05-17)
 
 - **Whisper en CPU**: ~5-10 s por minuto de audio. Audios típicos de WhatsApp (~30-60 s) tardan ~30-60 s en transcribirse. No es interactivo pero está bien para batch.
-- **Tagger con qwen3:8b en GPU**: ~3-5 s por item con batch=3 → **~6 items/min sostenidos**. Para los 75.700 items totales son ~210 horas (~9 días). Para los últimos 2 días (∼500 items) son ~80 min — confirmado en sesión real.
-- **Embed batch=50**: ~12 s por batch de 50 mensajes → **~250 items/min**. No es cuello de botella.
+- **Tagger con qwen3:8b en GPU**: ~3-5 s por item con batch=3 → **~6 items/min sostenidos**. Para los 75.870 items totales son ~210 horas (~9 días). Para los últimos 2 días (∼500 items) son ~80 min — confirmado en sesión real.
+- **Embed con bge-m3 en GPU**: backfill real de 1.977 items en 821 s → **~145 items/min** sostenidos (incluye facts, upserts a Qdrant y commit final). En batches del worker (50 ítems c/30 s), no es cuello de botella.
 - **Caption nocturno con qwen3-vl en GPU**: ~5-10 s por imagen, batch=3, ventana 4 h → ~7.000 imágenes por noche en teoría.
 
 ---
@@ -197,18 +203,20 @@ Definidos en `docker/postgres/init.sql` y poblados con migraciones Alembic en `b
 | `audit` | (reservado para logs sensibles) | |
 
 **Datos actuales:**
-- 75.702 items, 993 personas, 79 empresas, 113 conversaciones
-- 871 facts, 28 promesas, 11 transacciones, 297 menciones
-- 103 attachments en `media.attachments`
+- 75.874 items, 996 personas, 157 empresas, 122 conversaciones
+- 3.128 facts, 74 promesas, 38 transacciones, 801 menciones
+- 163 attachments en `media.attachments`
 
 ### 7.2 Qdrant (vectores)
 
 | Collection | Dim | Distance | Points | Para qué |
 |---|---|---|---|---|
-| `messages` | 2560 | Cosine | 75.683 | Embedding del texto del item (uno por item) |
-| `facts` | 2560 | Cosine | 780 | Embedding de cada hecho extraído por el tagger |
+| `messages` | 1024 | Cosine | 13.990 | Embedding del texto del item (uno por item) |
+| `facts` | 1024 | Cosine | 3.122 | Embedding de cada hecho extraído por el tagger |
 
 El retriever consulta **ambas** y mergea por score. Los facts suelen ganar para queries semánticas porque son texto pre-estructurado (ver §8).
+
+> Nota: la migración del 2026-05-16 cambió el dim de 2560 (qwen3-embedding) a 1024 (bge-m3). Las collections fueron recreadas, por lo que los conteos de hoy reflejan el re-embed parcial en curso: backfill de los ~2.000 más recientes en conversaciones seguidas (ya hecho) + items nuevos del bridge se embeben automáticamente.
 
 ### 7.3 MinIO (Vault)
 
@@ -250,7 +258,7 @@ Esto resuelve argentinismos coloquiales que el embedder no conecta bien con desc
 
 `retriever.recuperar()`:
 
-1. Embed de la `query_expandida` con qwen3-embedding:4b — **ejecutado en CPU** (`num_gpu=0` vía `force_cpu=True` en `OllamaService.embed`). Por qué CPU: ver §10.
+1. Embed de la `query_expandida` con bge-m3 — **en GPU normal**, sin `force_cpu`. bge-m3 (~1.2 GB) cabe en VRAM junto a qwen3:8b (5.23 GB) sin forzar swap. El hack `force_cpu` que existía con el modelo anterior fue eliminado en la migración del 2026-05-16.
 2. Búsqueda en `messages` (k=12 default) + búsqueda en `facts` (k=8 default), con filtros opcionales (persona, conversación, rango fechas).
 3. Mergeo por score y ordenado descendente.
 4. Refresh de metadata desde Postgres (nombre canónico actualizado, nombre del chat).
@@ -271,8 +279,10 @@ Esto resuelve argentinismos coloquiales que el embedder no conecta bien con desc
 
 | Estado | Tiempo total |
 |---|---|
-| Cold (primer chat después de restart) | 11-25 s |
-| Warm (qwen3:8b ya cargado) | **2.5-5 s** |
+| Cold (primer chat después de restart) | 8-15 s (bge-m3 carga rápido a GPU) |
+| Warm (qwen3:8b y bge-m3 cargados) | **~2 s** |
+
+Bajada vs versión previa con `force_cpu`: warm pasó de ~2.5 s a ~2 s porque el embed de la query corre en GPU en vez de CPU.
 
 ---
 
@@ -281,21 +291,24 @@ Esto resuelve argentinismos coloquiales que el embedder no conecta bien con desc
 ### 9.1 Datos en el sistema
 
 ```
-items_totales:    75.702
-items_embebidos:  75.690  (99,98%)
-items_taggeados:     617  (0,8%)  ← el tagger es nuevo, está corriendo
+items_totales:    75.874
+items_embebidos:  13.990  (18,4%)  ← post-migración bge-m3, re-embed gradual
+items_taggeados:   2.880  (3,8%)
 ```
 
-### 9.2 Distribución por tipo de media
+> El 81,6% restante de items pendientes de re-embed son histórico viejo (la mayor parte importado del `.txt` de WhatsApp del 2023-2024). El backfill se va a hacer en oleadas o por demanda — no es bloqueante porque las queries del chat suelen ser sobre lo reciente.
+
+### 9.2 Distribución por tipo (origen del item)
 
 ```
-texto:     73.354
-imagen:     1.695  ← procesados de noche con qwen3-vl
-audio:        435  ← procesados por Whisper CPU
-video:        166
-contacto:      31
-documento:     11
-sticker:       10
+chat-export (import histórico .txt):  74.658
+chat        (mensajes bridge live):       927
+ptt         (audios voz WhatsApp):        128
+image       (imágenes WhatsApp):          108
+sticker:                                   16
+video:                                     11
+document:                                  10
+otros (notification, vcard, ...):          16
 ```
 
 ### 9.3 Salidas estructuradas del tagger (muestra real)
@@ -318,11 +331,14 @@ sticker:       10
 ### 9.4 Estado de colas al momento del snapshot
 
 ```
-caption:   pendiente=2  en_proceso=1  fallido=1  completado=38
-tagger:    pendiente=631 en_proceso=2 completado=538
-embed:     completado=1.029
-transcribe: completado=57 en_proceso=1
+caption:    pendiente=17  en_proceso=1  fallido=3   completado=63
+tagger:     pendiente=0   en_proceso=5  fallido=0   completado=2.801
+embed:      pendiente=0   en_proceso=2  fallido=27  completado=13.357
+transcribe: pendiente=0   en_proceso=1               completado=74
+extract:                                              completado=2
 ```
+
+(El `embed completado=13.357` cuenta solo jobs encolados — los 633 adicionales que ven en Qdrant fueron embebidos vía `/api/embeddings/run` directo, sin pasar por la cola.)
 
 ---
 
@@ -342,16 +358,23 @@ transcribe: completado=57 en_proceso=1
 
 **Resultado**: chat warm pasó de 25 s → 2.5 s por mensaje.
 
-### 10.2 Embedding del chat en CPU
+### 10.2 Migración del embedding model: qwen3-embedding:4b → bge-m3 (2026-05-16)
 
-**Problema**: incluso con Whisper liberado, qwen3:8b (5.23 GB) + qwen3-embedding:4b (3.86 GB en VRAM) = 9.1 GB > 8 GB. No caben juntos. Cada chat hace embed → unload chat → load embed → ... → swap completo.
+**Problema**: incluso con Whisper liberado, qwen3:8b (5.23 GB) + qwen3-embedding:4b (3.86 GB en VRAM) = 9.1 GB > 8 GB. No caben juntos. El parche intermedio (2026-05-15) fue mandar el embed del chat a CPU vía `force_cpu=True` para no swappear el chat. Funcionaba pero sumaba 1-2 s por query y se sentía como un hack.
 
-**Decisión**: en `retriever.recuperar()`, embed de la query con `force_cpu=True` (pasa `num_gpu=0` a Ollama). El qwen3:8b queda caliente en GPU permanentemente. El worker continuo sigue embebiendo batches en GPU porque corre en background.
+**Decisión**: cambiar el modelo de embedding a `bge-m3` (568M params, ~1.2 GB en VRAM, 1024 dim).
+
+Cómo se evaluó: el A/B (`backend/ab_embedding.py`) creó collections paralelas en Qdrant, embebió 1000 items + 100 facts con cada modelo, y comparó rankings y scores sobre un set de queries de referencia. Resultado: bge-m3 ganó en recall y orden para queries en español rioplatense — el caso clínico de Hernán mejoró ~10% en score top-1 y los facts subieron en el ranking.
 
 **Trade-off**:
-- ❌ Embedding de la query tarda ~1-2 s en CPU (vs ms en GPU)
-- ✅ Sin swap → chat consistente
-- ✅ Worker no afectado
+- ✅ Calidad: mejor recall en español, sobre todo en queries cortas y argentinismos
+- ✅ Hardware: qwen3:8b + bge-m3 = ~7.2 GB, entran ambos en VRAM sin swap
+- ✅ Eliminado el hack `force_cpu` del chat (~0.5 s menos por query)
+- ✅ Embed más rápido en sí (bge-m3 es mucho más liviano)
+- ❌ Dim cambió de 2560 a 1024: las collections de Qdrant se recrearon → se perdieron los 75.690 embeddings del modelo viejo. Re-embed gradual (ver § 9.1)
+- ❌ Re-embed de los 75K items completos = ~9 h de GPU. En la práctica se prioriza lo reciente y se hace el resto en oleadas
+
+Implementación: `config.py` (`ollama_model_embedding="bge-m3"`, `embedding_dim=1024`), `retriever.recuperar()` sin `force_cpu`, `embedder._ensure_collections` recrea con nuevo dim si detecta mismatch.
 
 ### 10.3 Caption en ventana nocturna 02:00-06:00
 
@@ -366,7 +389,7 @@ transcribe: completado=57 en_proceso=1
 
 ### 10.4 Tagger en el worker (vs ejecución manual)
 
-**Problema histórico**: hasta 2026-05-15, el servicio `tagger.taggear_item` existía pero **no estaba integrado al worker**. Resultado: 61.887 items embebidos en Qdrant, 0 taggeados. El chat dependía únicamente de embedding crudo, que es flojo con argentinismos.
+**Problema histórico**: hasta 2026-05-15, el servicio `tagger.taggear_item` existía pero **no estaba integrado al worker**. Resultado: items embebidos en Qdrant pero 0 taggeados. El chat dependía únicamente de embedding crudo, que es flojo con argentinismos.
 
 **Decisión**: agregar etapa `tagger` al `queue_worker`. Hook automático: cuando un embed se completa, encola un tagger job. Cuando un tagger termina exitoso (creó facts/promesas/transacciones), encola un re-embed para que los nuevos artefactos entren a Qdrant.
 
@@ -376,20 +399,20 @@ transcribe: completado=57 en_proceso=1
 - ❌ Tagger compite por qwen3:8b con el chat; mientras corre, los chats van más lentos
 - ✅ Aceptado para POC: priorizamos calidad del dato sobre fluidez del chat
 
-### 10.5 Query expansion en el chat (vs cambiar el embedding model)
+### 10.5 Query expansion en el chat
 
-**Problema**: `qwen3-embedding:4b` no conecta bien argentinismos ("no le anda" ≠ "no funciona" en su espacio semántico).
+**Problema**: ningún embedding model conecta perfectamente argentinismos ("no le anda" ≠ "no funciona" en el espacio semántico, incluso con bge-m3 que es mejor que el anterior).
 
-**Decisión**: agregar 1 llamada extra a qwen3:8b por chat para expandir la query. Más simple que cambiar el modelo de embedding (que requeriría re-embeber los 75 K items).
+**Decisión**: agregar 1 llamada extra a qwen3:8b por chat para expandir la query, traduciéndola a una versión formal con sinónimos.
 
 **Trade-off**:
 - ❌ +1-2 s por chat
-- ✅ Mejora masiva del ranking sin re-embeber nada
-- ✅ Trivial de revertir si en el futuro se cambia el embedding model
+- ✅ Mejora del ranking incluso después de la migración a bge-m3 — ambas optimizaciones suman
+- ✅ Trivial de revertir o mover a un modelo más chico si se quiere bajar latencia
 
 ### 10.6 Modelos múltiples descargados pero solo 3 en uso
 
-Hay 9 modelos descargados (gemma3:12b, gemma4:e4b, aya-expanse:8b, etc.). Solo se usan 3 productivamente (qwen3:8b, qwen3-vl:8b, qwen3-embedding:4b). Los otros son **opciones para A/B test** si quisiéramos cambiar — descargados durante el benchmark de Sprint 0.
+Hay 10 modelos descargados (gemma3:12b, gemma4:e4b, aya-expanse:8b, qwen3-embedding:4b, etc.). Solo se usan 3 productivamente (qwen3:8b, qwen3-vl:8b, bge-m3). Los otros son **opciones para A/B test** si quisiéramos cambiar — descargados durante el benchmark de Sprint 0 y la migración de embeddings.
 
 ---
 
@@ -398,7 +421,8 @@ Hay 9 modelos descargados (gemma3:12b, gemma4:e4b, aya-expanse:8b, etc.). Solo s
 | Limitación | Impacto | Mitigación posible |
 |---|---|---|
 | El chat-during-day se hace lento mientras corre el backfill del tagger | UX pobre durante setup inicial | Mover tagger a ventana nocturna también (~mismo patrón que caption) |
-| Solo 0,8% de items taggeados al momento | Chat solo aprovecha facts en items recientes | Backfill nocturno corriendo, ~9 días para todo el histórico |
+| Solo 3,8% de items taggeados al momento | Chat solo aprovecha facts en items recientes | Backfill por demanda; ventana de auto-encolado de 30 días limita el flujo |
+| 81,6% de items aún sin embedding bge-m3 (re-embed gradual tras migración) | Búsquedas sobre histórico viejo (< 2025-Q1) no encuentran nada hasta backfill | Disparar `/api/embeddings/run?limit=2000` en oleadas, o backfill nocturno |
 | Sin facts para imágenes hasta procesarlas de noche | Búsquedas sobre fotos no encuentran nada hasta el primer ciclo de caption | Esperar el primer batch nocturno |
 | Whisper en CPU es ~50× más lento que en GPU | Audios nuevos tardan 30-60 s en estar disponibles para chat | Aceptable (la mayoría se procesa en background) |
 | Query expansion suma 1-2 s por chat | UX | Caché de queries comunes (no implementado) |
@@ -418,13 +442,11 @@ Pasar a una GPU con 16 GB+ VRAM (4080, A5000, etc.) cambia las restricciones de 
 - Eliminaría toda la gymnastics de CPU offload y ventana nocturna
 - Tradeoff: costo ($500-2000 USD)
 
-### B. Cambio de embedding model
+### B. ~~Cambio de embedding model~~ — hecho el 2026-05-16
 
-Pasar de `qwen3-embedding:4b` (2.5 GB, 2560 dim) a uno chico tipo `bge-m3` (568 MB, 1024 dim) o `nomic-embed-text` (270 MB, 768 dim):
-- ✅ Caben con qwen3:8b sin tocar
-- ✅ Quality benchmark a favor de bge-m3 en multilingüe (incluye español)
-- ❌ Requiere re-embeber 75K items (~4-6 h)
-- ❌ Recrear collections en Qdrant con nuevo dim
+Esta opción se evaluó y se ejecutó: ver § 10.2. Hoy el modelo de embeddings es `bge-m3` (1024 dim).
+
+Próximo análogo posible: probar `nomic-embed-text` (270 MB, 768 dim) en un A/B para ver si reduce aún más el footprint y la latencia sin perder calidad.
 
 ### C. Migrar a otro stack de LLM serving
 
@@ -469,7 +491,8 @@ El diseño está pensado para más fuentes. En orden de complejidad:
 - **nivel_procesamiento** — 0 = ingestado pero sin tagging; 1 = taggeado.
 - **`tagged_at`, `embedded_at`, `transcripcion_at`** — Marcas en `item.datos` (jsonb) que indican qué etapas se completaron. Permite saltearlas en re-runs.
 - **Ventana caption** — Rango horario diario en que la etapa `caption` puede usar GPU. Default 02-06 local.
-- **`force_cpu`** — Flag en `OllamaService.embed` que mete `num_gpu=0` en la request, forzando embedding en CPU.
+- **Ventana tagger** — `tagger_auto_window_days=30`. Items más viejos no se auto-encolan al tagger desde el embedder, para no bloquear la cola con backfill histórico.
+- **`force_cpu`** — Flag heredado en `OllamaService.embed` que mete `num_gpu=0` en la request. Ya no se usa para el chat (la migración a bge-m3 lo hizo innecesario), pero queda como herramienta de reserva si se vuelven a tener dos modelos que no entren juntos.
 
 ---
 
@@ -511,7 +534,7 @@ backend/
 │       ├── tagger.py                    # ⭐ etapa tagger (incl. runtime_config)
 │       ├── chat.py                      # ⭐ pipeline de Q&A
 │       ├── retriever.py                 # búsqueda híbrida en Qdrant
-│       ├── ollama_client.py             # wrapper con force_cpu
+│       ├── ollama_client.py             # wrapper con flag force_cpu (no usado en chat hoy)
 │       ├── qdrant_client.py
 │       ├── minio_client.py              # VaultStorage
 │       ├── whisper_client.py

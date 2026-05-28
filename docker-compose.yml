@@ -20,7 +20,7 @@ services:
   # ---------------------------------------------------
   postgres:
     image: pgvector/pgvector:pg16
-    restart: unless-stopped
+    restart: "no"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER requerido}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}
@@ -45,7 +45,7 @@ services:
   # ---------------------------------------------------
   qdrant:
     image: qdrant/qdrant:latest
-    restart: unless-stopped
+    restart: "no"
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?QDRANT_API_KEY requerido}
       QDRANT__LOG_LEVEL: INFO
@@ -68,7 +68,7 @@ services:
   # ---------------------------------------------------
   minio:
     image: minio/minio:latest
-    restart: unless-stopped
+    restart: "no"
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER requerido}
@@ -117,7 +117,7 @@ services:
   # ---------------------------------------------------
   ollama:
     image: ollama/ollama:latest
-    restart: unless-stopped
+    restart: "no"
     deploy:
       resources:
         reservations:
@@ -175,7 +175,7 @@ services:
     # La transcripción es nocturna/async y los audios de WhatsApp son cortos:
     # con faster_whisper int8 en CPU multinúcleo el rendimiento es aceptable.
     image: onerahmet/openai-whisper-asr-webservice:latest
-    restart: unless-stopped
+    restart: "no"
     environment:
       ASR_MODEL: ${WHISPER_MODEL:-large-v3-turbo}
       ASR_ENGINE: faster_whisper
@@ -199,7 +199,7 @@ services:
     build:
       context: ./backend
       dockerfile: ../docker/backend/Dockerfile
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
@@ -252,7 +252,7 @@ services:
     build:
       context: ./frontend
       dockerfile: ../docker/frontend/Dockerfile
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       backend:
         condition: service_healthy
@@ -275,7 +275,7 @@ services:
     build:
       context: ./bridge
       dockerfile: ../docker/bridge/Dockerfile
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       backend:
         condition: service_healthy

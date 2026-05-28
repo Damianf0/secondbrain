@@ -290,7 +290,7 @@ COVER_HTML = """
     para evaluación con el equipo
   </div>
   <div class="meta">
-    <strong>Versión:</strong> snapshot al 2026-05-16<br>
+    <strong>Versión:</strong> snapshot al 2026-05-17 (post-migración a bge-m3)<br>
     <strong>Datos:</strong> medidos sobre la instalación real, no estimados<br>
     <strong>Hardware:</strong> i7-10th gen · 32 GB RAM · RTX 3070 Ti 8 GB VRAM · Windows 11 + WSL2 + Docker Desktop
   </div>

@@ -49,3 +49,10 @@ docker-compose.override.yml
 # Archivos temporales del proyecto
 tmp/
 *.tmp
+
+# Versión 2 en desarrollo — fuera del repo por ahora
+secondbrain-v2/
+
+# Artefactos raros de Windows (paths con punto y coma)
+*;C/
+*;C
