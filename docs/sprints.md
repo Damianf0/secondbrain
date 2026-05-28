@@ -61,7 +61,7 @@
 - [ ] Prompt del tagger optimizado para español argentino
 - [ ] Extracción de tono (cordial, tenso, agresivo, etc.)
 - [ ] Extracción de hechos (promesas, transacciones, eventos)
-- [ ] Entity resolution (mapear "Esteban", "Esteban K", "+54 9..." a misma persona)
+- [ ] Entity resolution (mapear "Juan", "Juan P", "+54 9..." a misma persona)
 - [ ] Almacenamiento en `core.facts`, `core.promesas`, `core.transacciones`
 
 ---
@@ -96,27 +96,27 @@
 Test suite que el sistema debe responder bien para considerarse funcional:
 
 ### Capacidad 1: Recuperación temporal con persona
-1. ¿Cuándo fue la última vez que hablé con Esteban Kalinowski y de qué?
-2. ¿Qué le prometí entregar al cliente de Crecer Reproducción la semana pasada?
-3. ¿De qué hablamos con Mariela en Madrid?
+1. ¿Cuándo fue la última vez que hablé con Juan Pérez y de qué?
+2. ¿Qué le prometí entregar al cliente Acme Clínica la semana pasada?
+3. ¿De qué hablamos con Lucía en Madrid?
 4. ¿Cuántas veces hablé con el cliente X este mes y sobre qué temas?
 
 ### Capacidad 2: Recuperación de info específica
-5. ¿Cuál era el modelo del NAS que cotizamos para Esteban?
+5. ¿Cuál era el modelo del NAS que cotizamos para Juan?
 6. ¿Qué CUIT tiene la metalúrgica con la que trabajamos el sistema en FileMaker?
 7. ¿Dónde guardé la captura del error 500 que me mandó el cliente del bot?
 
 ### Capacidad 3: Estado de proyectos y compromisos
-8. ¿En qué fase está el proyecto del bot de Crecer Reproducción?
-9. ¿Qué tareas pendientes tengo de WORKBENCH IT esta semana?
+8. ¿En qué fase está el proyecto del bot de Acme Clínica?
+9. ¿Qué tareas pendientes tengo de la empresa esta semana?
 10. ¿Qué le debo cumplir a quién y cuándo?
 
 ### Capacidad 4: Recuperación difusa / contextual
 11. Esa receta que me mandó mi vieja por WhatsApp hace unos meses, la de pollo
-12. La foto del comprobante del vuelo de Iberia
+12. La foto del comprobante del vuelo de la aerolínea
 
 ### Capacidad 5: Análisis y síntesis
-13. Resumime todo lo que pasó con la denuncia de Iberia
+13. Resumime todo lo que pasó con la denuncia de la aerolínea
 14. ¿Qué patrones hay en los reclamos de mis clientes este trimestre?
 
 ### Capacidad 6: Financieras

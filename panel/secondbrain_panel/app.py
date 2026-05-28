@@ -12,7 +12,7 @@ from .main_window import MainWindow
 def main() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("SecondBrain Panel")
-    app.setOrganizationName("WorkbenchIT")
+    app.setOrganizationName("SecondBrain")
 
     win = MainWindow()
     win.show()

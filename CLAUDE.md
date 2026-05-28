@@ -6,15 +6,15 @@
 
 ## Quién soy y qué proyecto es este
 
-Soy **Damian Fagundez**, dueño de **WORKBENCH IT** (Mar del Plata, Argentina). Trabajo con PHP/Laravel, MySQL, Node.js, Docker, bots WhatsApp. Tengo otro proyecto en producción en mi clínica (`Damianf0/crecer-bot`) del que reuso patrones e infraestructura para este.
+Soy el dueño del proyecto, una persona técnica que trabaja con PHP/Laravel, MySQL, Node.js, Docker y bots de WhatsApp. Tengo otro proyecto previo (un bot de WhatsApp con stack PHP/Laravel + Node + MySQL + Ollama + Whisper) del que reuso patrones e infraestructura para este.
 
 **SecondBrain** es un sistema personal de **memoria aumentada privada** — un Vault que indexa, procesa y permite consultar mis conversaciones de WhatsApp, emails de Gmail, y eventualmente más fuentes (Calendar, Drive, Telegram, etc.). Todo corre **100% local**, sin enviar datos a ninguna nube.
 
 ### Por qué lo hago
 Quiero una "segunda memoria" que me ayude a recordar y consultar sobre mis propias actividades y relaciones, con queries del tipo:
 
-- *¿Cuándo fue la última vez que hablé con Esteban Kalinowski y de qué?*
-- *¿Qué le prometí entregar al cliente de Crecer Reproducción la semana pasada?*
+- *¿Cuándo fue la última vez que hablé con Juan Pérez y de qué?*
+- *¿Qué le prometí entregar al cliente Acme Clínica la semana pasada?*
 - *¿Cuánto gasté en herramientas/software este mes?*
 - *¿Qué tengo que hacer hoy?* (briefing proactivo)
 
@@ -105,7 +105,7 @@ Scheduler activa workers según uso de GPU y hora del día. Modos: `hot` / `warm
 Entidades core: Persona, Empresa, Proyecto, Lugar, Evento.
 Específicas: Activo, Documento, **Promesa/Compromiso**, Incidente, Tema, **Transacción financiera**, Tarea.
 
-**Entity resolution canónico**: que "Esteban", "Esteban K", "+54 9 223...", "ek@..." sean la misma persona. Esto es la columna vertebral del sistema.
+**Entity resolution canónico**: que "Juan", "Juan P", "+54 9 XXX...", "jp@..." sean la misma persona. Esto es la columna vertebral del sistema.
 
 ### Análisis de tono y dinámica conversacional
 
@@ -146,7 +146,7 @@ Schema mínimo (`core.items`, `core.personas`, `media.attachments`, `processing.
 
 ### Sprint 2 — Bridge WhatsApp en vivo 📲
 
-Container Node.js con whatsapp-web.js (reusar patrones de `crecer-bot`), captura de mensajes nuevos en tiempo real (entrantes y salientes vía multi-device sync), QR en panel admin.
+Container Node.js con whatsapp-web.js (reusar patrones del proyecto previo), captura de mensajes nuevos en tiempo real (entrantes y salientes vía multi-device sync), QR en panel admin.
 
 ### Sprint 3 — Pipeline de tagging 🧠
 
@@ -187,10 +187,10 @@ Decisión: **guardar TODOS los binarios** (es un Vault, no un índice). Hash SHA
 ✅ **MinIO** para storage (no filesystem directo) — más profesional, mejor escalabilidad
 ✅ **Schemas en Postgres** desde día 1 (modularidad lógica)
 ✅ **Múltiples collections** en Qdrant
-✅ **No backups** en POC (Damian se encarga manualmente)
-✅ **Python desde cero** como única lógica de pipeline (no PHP, aunque crecer-bot use PHP)
-✅ **Streamlit** en POC; eventualmente migrar a panel propio (Reflex o Laravel forkeado de crecer-bot)
-✅ **whatsapp-web.js** (no Baileys) — Damian ya lo está probando
+✅ **No backups** en POC (el usuario se encarga manualmente)
+✅ **Python desde cero** como única lógica de pipeline (no PHP, aunque el proyecto previo use PHP)
+✅ **Streamlit** en POC; eventualmente migrar a panel propio (Reflex o Laravel forkeado del proyecto previo)
+✅ **whatsapp-web.js** (no Baileys) — ya lo probamos en el proyecto previo
 ✅ **Audios .opus tal cual** (sin conversión) — Whisper los lee directo
 ✅ **Sin cifrado** de archivos individuales en POC (confiar en BitLocker/LUKS del disco)
 ✅ **Capa de tono y dinámica conversacional** desde el inicio (campo en items + nivel 2 para hilos)
@@ -262,9 +262,9 @@ secondbrain/
 
 ---
 
-## Repositorio relacionado: crecer-bot
+## Repositorio relacionado (proyecto previo)
 
-`https://github.com/Damianf0/crecer-bot` — proyecto de la clínica que ya tengo en producción. Stack PHP Laravel + Node + MySQL + Ollama + Whisper. Reusable de ahí para Sprint 2:
+Proyecto privado en producción con stack PHP Laravel + Node + MySQL + Ollama + Whisper. Reusable de ahí para Sprint 2:
 
 - Patrón del bridge whatsapp-web.js (manejo de QR, sesión persistente vía volumen Docker, webhook al backend)
 - Ventana de mensajes consecutivos (acumular mensajes que llegan rápido en una sola unidad: 8s espera, 45s máxima, reset por inactividad 30 min)
@@ -272,7 +272,7 @@ secondbrain/
 - Whisper como servicio HTTP con `faster_whisper` engine
 - Estructura modular del bot: `index.js`, `whatsapp.js`, `mensajes.js`, `ollama.js`, `respuestas.js`, `cola.js`, `horario.js`
 
-**NO reusar**: lógica vertical de clínica (turnos, pacientes, Omnia API), ni el panel Laravel (acá vamos con Streamlit/Python).
+**NO reusar**: la lógica vertical específica del proyecto previo, ni el panel Laravel (acá vamos con Streamlit/Python).
 
 ---
 

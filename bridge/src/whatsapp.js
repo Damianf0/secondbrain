@@ -35,7 +35,7 @@ export const state = {
   status: "starting", // starting | qr | authenticated | ready | disconnected | auth_failure | error
   qrDataUrl: null,
   qrString: null,
-  accountPhone: null, // mi número, e.g. "+5492235594007"
+  accountPhone: null, // teléfono del usuario en formato E.164, p.ej. "+54XXXXXXXXXX"
   accountName: null,
   lastEvent: new Date().toISOString(),
   startedAt: new Date().toISOString(),

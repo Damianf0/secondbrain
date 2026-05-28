@@ -4,7 +4,7 @@ import phonenumbers
 
 
 def normalizar_telefono(raw: str | None, region_default: str = "AR") -> str | None:
-    """`+54 9 223 559 4007` / `223 5594007` -> `+5492235594007`. None si no es válido."""
+    """`+54 9 11 1234 5678` / `11 12345678` -> `+5491112345678`. None si no es válido."""
     if not raw:
         return None
     raw = str(raw).strip()

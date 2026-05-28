@@ -2,7 +2,7 @@
 Models del pipeline de tagging (Sprint 3): los "artefactos" que el tagger
 extrae de cada `Item`.
 
-- Fact:        hecho / dato / evento extraído ("Esteban entrega el listado el viernes")
+- Fact:        hecho / dato / evento extraído ("Juan entrega el listado el viernes")
 - Promesa:     compromiso de entregar o hacer algo
 - Transaccion: mención de plata (pago, presupuesto, deuda)
 - Mencion:     entidad (persona/empresa) nombrada en el texto, con su resolución canónica

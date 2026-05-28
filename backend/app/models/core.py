@@ -19,7 +19,7 @@ from app.db.session import Base
 class Persona(Base):
     """
     Contacto canónico. Resuelve el problema de entity resolution:
-    "Esteban", "Esteban K", "+54 9 223..." → misma persona.
+    "Juan", "Juan P", "+54 9 XXX..." → misma persona.
     """
 
     __tablename__ = "personas"

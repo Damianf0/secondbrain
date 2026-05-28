@@ -58,7 +58,7 @@ class ResultadoVCard:
 
 
 def _normalizar_telefono(raw: str, region_default: str = "AR") -> str | None:
-    """Devuelve el teléfono en E.164 (`+5492235594007`) o None si no es válido."""
+    """Devuelve el teléfono en E.164 (`+5491112345678`) o None si no es válido."""
     if not raw:
         return None
     try:

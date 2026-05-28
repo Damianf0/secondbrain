@@ -165,7 +165,7 @@ for msg in st.session_state.chat_history:
             _render_fuentes(msg.get("fuentes") or [], msg["content"])
 
 # Input
-pregunta = st.chat_input("Preguntá algo… (ej: ¿qué le prometí a Esteban?, ¿cuándo hablé con Mariela?)")
+pregunta = st.chat_input("Preguntá algo… (ej: ¿qué le prometí a Juan?, ¿cuándo hablé con Lucía?)")
 if pregunta:
     st.session_state.chat_history.append({"role": "user", "content": pregunta})
     with st.chat_message("user"):

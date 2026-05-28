@@ -398,7 +398,7 @@ strong { color: #0d2b4e; font-weight: 600; }
 
 COVER = """
 <div class="cover">
-  <div class="brand">WORKBENCH IT · POC interno</div>
+  <div class="brand">SecondBrain · POC interno</div>
   <h1 class="title">SecondBrain</h1>
   <span class="accent"></span>
   <p class="subtitle">Memoria aumentada privada,<br>100 % local.</p>
@@ -556,7 +556,7 @@ PAGE_STACK = """
     <div class="card amber">
       <span class="ct">Entity resolution canónico</span>
       <span class="cs">Columna vertebral</span>
-      "Esteban", "Esteban K" y "+54 9 223..." resuelven a la misma persona.
+      "Juan", "Juan P" y "+54 9 XXX..." resuelven a la misma persona.
       Habilita queries como "última vez que hablé con X".
     </div>
   </div>

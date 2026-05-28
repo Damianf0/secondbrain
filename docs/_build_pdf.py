@@ -282,7 +282,7 @@ h3 + p, h3 + ul, h3 + ol, h3 + table { page-break-before: avoid; }
 
 COVER_HTML = """
 <div class="cover">
-  <div class="brand">WORKBENCH IT · POC interno</div>
+  <div class="brand">SecondBrain · POC interno</div>
   <h1 class="title">SecondBrain</h1>
   <div class="accent-bar"></div>
   <div class="subtitle">

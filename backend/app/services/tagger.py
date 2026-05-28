@@ -51,13 +51,13 @@ def runtime_config() -> dict[str, object]:
 
 
 # Nombres que NO cuentan como "persona mencionada" (es el dueño del sistema)
-_YO_ALIASES = {"damian", "dami", "damián", "yo", "damian fagundez", "damian orozco"}
+_YO_ALIASES = {"damian", "dami", "damián", "yo"}
 
 # ---------------------------------------------------------------------------
 # Prompt
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """Sos un analista que extrae información estructurada de mensajes de WhatsApp para un sistema de memoria personal privado de Damian (de WORKBENCH IT, Mar del Plata; también trabaja con la clínica "Crecer Reproducción"). Ese contexto es solo para que entiendas de qué puede hablar — NUNCA lo metas en la salida si no aparece literalmente en el mensaje.
+SYSTEM_PROMPT = """Sos un analista que extrae información estructurada de mensajes de WhatsApp para un sistema de memoria personal privado de Damian.
 
 Para el mensaje que te paso, devolvé SOLO un objeto JSON (sin texto antes ni después) con exactamente esta forma:
 

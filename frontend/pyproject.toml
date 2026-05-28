@@ -5,7 +5,7 @@ description = "SecondBrain - Panel admin con Streamlit"
 readme = "../README.md"
 requires-python = ">=3.12"
 authors = [
-    { name = "Damian Fagundez", email = "damian@workbench.com.ar" },
+    { name = "SecondBrain" },
 ]
 
 dependencies = [

@@ -115,7 +115,7 @@ with tab_llm:
 with tab_embed:
     text_to_embed = st.text_area(
         "Texto a embebir",
-        value="El cliente Esteban me pidió que renovemos el contrato del NAS la semana que viene",
+        value="El cliente Juan me pidió que renovemos el contrato del NAS la semana que viene",
         height=80,
     )
 
@@ -149,7 +149,7 @@ with tab_compare:
         "Prompt común",
         value=(
             "Extraé los hechos importantes de este mensaje y devolvelos en JSON:\n\n"
-            "Mensaje: 'Dale Esteban, mañana a las 10 te llevo el presupuesto del NAS, "
+            "Mensaje: 'Dale Juan, mañana a las 10 te llevo el presupuesto del NAS, "
             "cobramos 350 mil más IVA. Decime si te parece bien.'"
         ),
         height=120,

@@ -44,7 +44,7 @@ THINK_OFF = os.getenv("BENCH_THINK_OFF", "").lower() in ("1", "true", "yes")
 # Prompt del tagger
 # ---------------------------------------------------------------------------
 
-SYSTEM = """Sos un analista que extrae información estructurada de mensajes de WhatsApp para un sistema de memoria personal privado. El dueño del sistema es Damian (WORKBENCH IT, Mar del Plata, Argentina; también tiene relación con una clínica, "Crecer Reproducción").
+SYSTEM = """Sos un analista que extrae información estructurada de mensajes de WhatsApp para un sistema de memoria personal privado. El dueño del sistema es el usuario (una persona técnica con varios clientes, entre ellos una clínica).
 
 Para el mensaje que te paso, devolvé SOLAMENTE un objeto JSON (sin texto antes ni después, sin markdown) con esta estructura exacta:
 
@@ -54,7 +54,7 @@ Para el mensaje que te paso, devolvé SOLAMENTE un objeto JSON (sin texto antes 
   "empresas_mencionadas": ["empresas/organizaciones nombradas"],
   "promesas": [{"quien": "quién se compromete", "que": "qué entrega o hace", "cuando": "plazo si lo hay, si no null"}],
   "transacciones": [{"monto": "número", "moneda": "ARS|USD|otro", "concepto": "de qué", "tipo": "ingreso|egreso|presupuesto"}],
-  "tareas": ["acciones concretas que Damian debería hacer, si surgen del mensaje"],
+  "tareas": ["acciones concretas que el usuario debería hacer, si surgen del mensaje"],
   "tono": "uno de: cordial, formal, urgente, tenso, agresivo, pasivo-agresivo, afectuoso, informativo, humoristico",
   "sentimiento": {"polaridad": "positivo|neutro|negativo", "intensidad": 0.0},
   "marcadores": ["lista de: contiene_reclamo, contiene_disculpa, contiene_promesa, contiene_pregunta, urgente, contiene_monto"],
@@ -66,15 +66,15 @@ Reglas: si un campo no aplica, devolvé lista vacía []. No inventes datos que n
 TEST_MESSAGES = [
     {
         "id": "promesa_y_monto",
-        "sender": "Esteban Kalinowski",
-        "chat": "Esteban Kalinowski",
-        "body": "Buenas Dami, te confirmo: el viernes a primera hora te paso el listado de turnos actualizado. Y el mantenimiento mensual del bot lo dejamos en $45000 como hablamos, te lo deposito a fin de mes.",
+        "sender": "Juan Pérez",
+        "chat": "Juan Pérez",
+        "body": "Buenas, te confirmo: el viernes a primera hora te paso el listado de turnos actualizado. Y el mantenimiento mensual del bot lo dejamos en $45000 como hablamos, te lo deposito a fin de mes.",
     },
     {
         "id": "reclamo_urgente",
         "sender": "Marcelo (cliente alarmas)",
         "chat": "Marcelo Alarcón",
-        "body": "Damian necesito el sitio andando HOY. Ya van dos semanas que me decís que está listo y no funciona nada, los clientes me llaman. Esto no puede seguir así, mañana lo necesito sí o sí.",
+        "body": "Necesito el sitio andando HOY. Ya van dos semanas que me decís que está listo y no funciona nada, los clientes me llaman. Esto no puede seguir así, mañana lo necesito sí o sí.",
     },
     {
         "id": "entidades_casual",
@@ -84,9 +84,9 @@ TEST_MESSAGES = [
     },
     {
         "id": "gasto_propio",
-        "sender": "Damian Orozco",
-        "chat": "Damian Orozco",
-        "body": "Anoté: pagué la suscripción de Claude, ahora son USD 200 por mes. Y renové el dominio workbench.com.ar, otros $15000 hasta el año que viene.",
+        "sender": "Yo",
+        "chat": "Notas",
+        "body": "Anoté: pagué la suscripción de Claude, ahora son USD 200 por mes. Y renové el dominio ejemplo.com, otros $15000 hasta el año que viene.",
     },
 ]
 
