@@ -51,7 +51,7 @@ def runtime_config() -> dict[str, object]:
 
 
 # Nombres que NO cuentan como "persona mencionada" (es el dueño del sistema)
-_YO_ALIASES = {"damian", "dami", "damián", "yo"}
+_YO_ALIASES = {"damian", "dami", "damián", "yo", "damian orozco"}
 
 # ---------------------------------------------------------------------------
 # Prompt

@@ -6,7 +6,7 @@
 
 ## Quién soy y qué proyecto es este
 
-Soy el dueño del proyecto, una persona técnica que trabaja con PHP/Laravel, MySQL, Node.js, Docker y bots de WhatsApp. Tengo otro proyecto previo (un bot de WhatsApp con stack PHP/Laravel + Node + MySQL + Ollama + Whisper) del que reuso patrones e infraestructura para este.
+Soy **Damian Orozco**, una persona técnica que trabaja con PHP/Laravel, MySQL, Node.js, Docker y bots de WhatsApp. Tengo otro proyecto previo (un bot de WhatsApp con stack PHP/Laravel + Node + MySQL + Ollama + Whisper) del que reuso patrones e infraestructura para este.
 
 **SecondBrain** es un sistema personal de **memoria aumentada privada** — un Vault que indexa, procesa y permite consultar mis conversaciones de WhatsApp, emails de Gmail, y eventualmente más fuentes (Calendar, Drive, Telegram, etc.). Todo corre **100% local**, sin enviar datos a ninguna nube.
 
@@ -187,10 +187,10 @@ Decisión: **guardar TODOS los binarios** (es un Vault, no un índice). Hash SHA
 ✅ **MinIO** para storage (no filesystem directo) — más profesional, mejor escalabilidad
 ✅ **Schemas en Postgres** desde día 1 (modularidad lógica)
 ✅ **Múltiples collections** en Qdrant
-✅ **No backups** en POC (el usuario se encarga manualmente)
+✅ **No backups** en POC (Damian se encarga manualmente)
 ✅ **Python desde cero** como única lógica de pipeline (no PHP, aunque el proyecto previo use PHP)
 ✅ **Streamlit** en POC; eventualmente migrar a panel propio (Reflex o Laravel forkeado del proyecto previo)
-✅ **whatsapp-web.js** (no Baileys) — ya lo probamos en el proyecto previo
+✅ **whatsapp-web.js** (no Baileys) — Damian ya lo está probando
 ✅ **Audios .opus tal cual** (sin conversión) — Whisper los lee directo
 ✅ **Sin cifrado** de archivos individuales en POC (confiar en BitLocker/LUKS del disco)
 ✅ **Capa de tono y dinámica conversacional** desde el inicio (campo en items + nivel 2 para hilos)

@@ -75,4 +75,4 @@ docker compose exec backend alembic upgrade head
 
 ## Licencia
 
-Privado / Personal
+Privado / Personal — Damian Orozco

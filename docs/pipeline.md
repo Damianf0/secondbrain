@@ -1,7 +1,7 @@
 # SecondBrain — Pipeline técnico (POC)
 
 > **Estado al 2026-05-17** · Documento de referencia para evaluación del equipo
-> Todos los números son medidos sobre la instalación real corriendo en el equipo del usuario (i7-10th gen, 32GB RAM, RTX 3070 Ti 8GB VRAM, Windows 11 + WSL2 + Docker Desktop).
+> Todos los números son medidos sobre la instalación real corriendo en el equipo de Damian (i7-10th gen, 32GB RAM, RTX 3070 Ti 8GB VRAM, Windows 11 + WSL2 + Docker Desktop).
 >
 > Cambios desde el snapshot del 2026-05-16: **migración del modelo de embeddings** de `qwen3-embedding:4b` (2560 dim) a `bge-m3` (1024 dim) tras A/B con datos reales. Como bge-m3 pesa ~1.2 GB en VRAM contra ~3.8 GB del anterior, **convive con qwen3:8b sin swap** y se eliminó el hack `force_cpu` del chat. Los conteos de items embebidos reflejan el re-embed parcial en curso (ver § 9).
 
@@ -325,7 +325,7 @@ otros (notification, vcard, ...):          16
 - $5.783 ARS, *"cuota VISA"*, egreso, confianza 0.9
 
 **Resúmenes de imágenes (qwen3-vl):**
-- *"Captura de pantalla de una transferencia bancaria enviada por Carlos Pérez al usuario por $32.300"*
+- *"Captura de pantalla de una transferencia bancaria enviada por Carlos Pérez a Damian por $32.300"*
 - *"Pantalla de una compra en donweb.com, mostrando un plan de Web Hosting"*
 
 ### 9.4 Estado de colas al momento del snapshot
