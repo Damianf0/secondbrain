@@ -62,7 +62,9 @@ class ColasTab(QWidget):
 
     def _render(self, d: dict) -> None:
         counts = d.get("counts") or {}  # {tipo: {estado: n}}
+        resumen = d.get("resumen") or {}  # {tipo: {..., eta_legible, rate_por_min}}
         total_pend = 0
+        etas = []
         for i, tipo in enumerate(_TIPOS):
             row = counts.get(tipo, {})
             for j, estado in enumerate(_ESTADOS):
@@ -77,8 +79,12 @@ class ColasTab(QWidget):
                     cell.setForeground(Qt.GlobalColor.red)
                 elif estado == "en_proceso" and v > 0:
                     cell.setForeground(Qt.GlobalColor.cyan)
+            info = resumen.get(tipo) or {}
+            if (info.get("pendiente", 0) + info.get("en_proceso", 0)) > 0:
+                etas.append(f"{tipo}: {info.get('eta_legible', '?')} ({info.get('rate_por_min', 0):.1f}/min)")
         ts = d.get("at", "")
-        self.foot_label.setText(f"Total pendientes: {total_pend}  ·  Actualizado: {ts}")
+        eta_txt = "  ·  " + " | ".join(etas) if etas else ""
+        self.foot_label.setText(f"Total pendientes: {total_pend}  ·  Actualizado: {ts}{eta_txt}")
 
     def _on_error(self, msg: str) -> None:
         self.foot_label.setText(f"error: {msg[:200]}")

@@ -16,6 +16,42 @@ st.caption("Drena las colas automáticamente. En reposo cuando no hay trabajo.")
 api = APIClient()
 
 
+# ---------------------------------------------------------------------------
+# Colas en vivo: consulta la base directo (no la memoria del worker), así que
+# es correcto siempre -- incluso justo después de un restart del backend.
+# ---------------------------------------------------------------------------
+st.subheader("📈 Colas — estado real")
+try:
+    q = api.queue_stats()
+    resumen = q.get("resumen", {})
+    orden = ["transcribe", "extract", "caption", "embed", "tagger"]
+    tipos = [t for t in orden if t in resumen] + [t for t in resumen if t not in orden]
+    if not tipos:
+        st.caption("Sin jobs todavía.")
+    for tipo in tipos:
+        info = resumen[tipo]
+        pend = info["pendiente"] + info["en_proceso"]
+        if pend == 0 and info["fallido"] == 0:
+            continue  # no mostrar colas vacías y sin errores, para no llenar la pantalla
+        c = st.columns([2, 2, 2, 2, 3])
+        c[0].markdown(f"**{tipo}**")
+        c[1].metric("Pendientes", f"{info['pendiente']:,}", help="en_proceso: " + str(info["en_proceso"]))
+        c[2].metric("Ritmo", f"{info['rate_por_min']:.1f}/min", help=f"últimos {q.get('ventana_rate_min', 15)} min")
+        c[3].metric("ETA", info["eta_legible"])
+        if info["fallido"]:
+            c[4].error(f"{info['fallido']} fallidos")
+    st.caption(f"Actualizado: {q.get('at', '')[:19].replace('T', ' ')} UTC")
+except Exception as e:  # noqa: BLE001
+    st.error(f"No pude traer las colas: {e}")
+
+st.divider()
+st.subheader("🔧 Proceso del worker")
+st.caption(
+    "Lo de abajo es el estado en memoria del proceso backend -- se resetea a "
+    "cero en cada restart (deploy, --reload, crash). Para saber cuánto falta "
+    "de verdad, mirá 'Colas — estado real' arriba."
+)
+
 try:
     s = api.worker_status()
 except Exception as e:  # noqa: BLE001

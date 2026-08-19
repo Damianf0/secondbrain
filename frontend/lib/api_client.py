@@ -396,6 +396,16 @@ class APIClient:
             r.raise_for_status()
             return r.json()
 
+    def queue_stats(self) -> dict[str, Any]:
+        """Estado en vivo de las colas (pendiente/en_proceso/completado/fallido +
+        ritmo/ETA por tipo), consultado directo a la base -- no depende del
+        estado en memoria del worker, así que es correcto aunque el backend
+        se haya reiniciado hace un segundo."""
+        with self._client() as client:
+            r = client.get("/api/panel/queues")
+            r.raise_for_status()
+            return r.json()
+
     # -----------------------------------------------------------
     # Chat / Q&A (Sprint 4)
     # -----------------------------------------------------------

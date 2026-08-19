@@ -6,7 +6,7 @@ para no contaminarlos con utilidades de orquestación.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -26,11 +26,42 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/panel", tags=["panel"])
 
 
+_ETA_RATE_WINDOW_MIN = 15
+
+
+def _fmt_eta(minutos: float | None) -> str:
+    if minutos is None:
+        return "sin actividad reciente"
+    if minutos < 1:
+        return "<1 min"
+    horas, resto_min = divmod(round(minutos), 60)
+    dias, resto_horas = divmod(horas, 24)
+    partes = []
+    if dias:
+        partes.append(f"{dias}d")
+    if resto_horas:
+        partes.append(f"{resto_horas}h")
+    if resto_min and not dias:
+        partes.append(f"{resto_min}min")
+    return " ".join(partes) or "<1 min"
+
+
 @router.get("/queues")
 def queue_counts(db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Contadores de processing.jobs agrupados por tipo y estado.
+    """Estado en vivo de `processing.jobs`, con ritmo y ETA por tipo.
 
-    Devuelve `{"counts": {tipo: {estado: n}}, "at": iso}`.
+    A diferencia de `/api/worker/status` (que solo refleja el último tick que
+    el proceso tiene en memoria, y se resetea a null en cada restart), esto
+    consulta la base directo -- siempre da un número real, sin importar
+    cuándo reinició el backend por última vez.
+
+    `rate_por_min` se calcula sobre jobs completados en los últimos
+    `_ETA_RATE_WINDOW_MIN` minutos (también de la base, no de memoria).
+    Si no hubo trabajo terminado en esa ventana, `eta_minutos` es null
+    ("sin actividad reciente" en `eta_legible`) -- no inventamos una
+    velocidad si no hay evidencia reciente de que algo se esté procesando.
+
+    Devuelve `{"counts": {...} (compat), "resumen": {...} (nuevo), "at": iso}`.
     """
     rows = db.execute(
         select(Job.tipo, Job.estado, func.count())
@@ -39,8 +70,34 @@ def queue_counts(db: Session = Depends(get_db)) -> dict[str, Any]:
     counts: dict[str, dict[str, int]] = {}
     for tipo, estado, n in rows:
         counts.setdefault(tipo, {})[estado] = int(n)
+
+    desde = datetime.now(timezone.utc) - timedelta(minutes=_ETA_RATE_WINDOW_MIN)
+    rate_rows = db.execute(
+        select(Job.tipo, func.count())
+        .where(Job.estado == "completado", Job.completed_at >= desde)
+        .group_by(Job.tipo)
+    ).all()
+    rates = {tipo: n / _ETA_RATE_WINDOW_MIN for tipo, n in rate_rows}  # items/min
+
+    resumen: dict[str, Any] = {}
+    for tipo, estados in counts.items():
+        restante = estados.get("pendiente", 0) + estados.get("en_proceso", 0)
+        rate = rates.get(tipo, 0.0)
+        eta_min = round(restante / rate, 1) if rate > 0 and restante > 0 else None
+        resumen[tipo] = {
+            "pendiente": estados.get("pendiente", 0),
+            "en_proceso": estados.get("en_proceso", 0),
+            "completado": estados.get("completado", 0),
+            "fallido": estados.get("fallido", 0),
+            "rate_por_min": round(rate, 2),
+            "eta_minutos": eta_min,
+            "eta_legible": _fmt_eta(eta_min) if restante > 0 else "sin pendientes",
+        }
+
     return {
         "counts": counts,
+        "resumen": resumen,
+        "ventana_rate_min": _ETA_RATE_WINDOW_MIN,
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
