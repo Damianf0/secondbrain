@@ -1,7 +1,7 @@
 """
 Página de Audios / Transcripción (Sprint 7).
 
-- Estado: cuántos audios hay, cuántos tienen binario (en MinIO), cuántos están
+- Estado: cuántos audios hay, cuántos tienen binario (en el Vault), cuántos están
   transcritos, cuántos jobs pendientes.
 - Lista de audios pendientes con botón "Transcribir uno" y "Drenar cola".
 - Listado de audios ya transcritos para ojear las transcripciones.
@@ -29,7 +29,7 @@ except Exception as e:  # noqa: BLE001
 
 cols = st.columns(5)
 cols[0].metric("Audios totales", f"{s['audios_total']:,}", help="items con media_tipo=audio")
-cols[1].metric("Con binario", f"{s['audios_con_attachment']:,}", help="en MinIO (vía bridge en vivo)")
+cols[1].metric("Con binario", f"{s['audios_con_attachment']:,}", help="en el Vault (vía bridge en vivo)")
 cols[2].metric("Sin binario", f"{s['audios_sin_binario']:,}", help="históricos sin .opus disponible")
 cols[3].metric("Transcritos", f"{s['audios_transcritos']:,}")
 cols[4].metric(

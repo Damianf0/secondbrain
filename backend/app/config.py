@@ -41,14 +41,13 @@ class Settings(BaseSettings):
     qdrant_api_key: str = Field(...)
 
     # -------------------------------------------------
-    # MinIO
+    # Vault (storage de archivos crudos -- filesystem local, ver
+    # app/services/vault_storage.py). vault_public_base_url es la URL desde la
+    # que el browser llega al backend (mismo puerto que el resto de la API,
+    # a diferencia de MinIO que necesitaba su propio puerto/endpoint).
     # -------------------------------------------------
-    minio_endpoint: str = "minio:9000"
-    minio_access_key: str = Field(...)
-    minio_secret_key: str = Field(...)
-    minio_bucket_raw: str = "raw"
-    minio_bucket_derived: str = "derived"
-    minio_secure: bool = False
+    vault_path: str = "/vault"
+    vault_public_base_url: str = "http://localhost:8000"
 
     # -------------------------------------------------
     # Ollama

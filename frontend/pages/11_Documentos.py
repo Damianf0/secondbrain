@@ -26,7 +26,7 @@ except Exception as e:  # noqa: BLE001
 
 cols = st.columns(5)
 cols[0].metric("Docs totales", f"{s['docs_total']:,}", help="items con media_tipo=documento")
-cols[1].metric("Con binario", f"{s['docs_con_attachment']:,}", help="en MinIO (bridge en vivo o upload manual)")
+cols[1].metric("Con binario", f"{s['docs_con_attachment']:,}", help="en el Vault (bridge en vivo o upload manual)")
 cols[2].metric("Sin binario", f"{s['docs_sin_binario']:,}", help="históricos sin binario disponible")
 cols[3].metric("Extraídos", f"{s['docs_extraidos']:,}")
 cols[4].metric(

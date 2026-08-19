@@ -2,7 +2,7 @@
 Endpoints de prueba para validar el setup del Sprint 0.
 
 Estos endpoints existen para que desde el frontend Streamlit puedas
-verificar que el LLM responde, los embeddings funcionan, MinIO guarda
+verificar que el LLM responde, los embeddings funcionan, el Vault guarda
 y Qdrant recibe vectores. En sprints siguientes se reemplazan o
 amplían con endpoints reales del pipeline.
 """
@@ -84,7 +84,7 @@ def test_embed(req: EmbedTestRequest) -> dict:
 
 
 # -------------------------------------------------------------
-# Vault (MinIO)
+# Vault (filesystem)
 # -------------------------------------------------------------
 
 @router.post("/vault/upload")
@@ -92,8 +92,8 @@ async def test_vault_upload(file: UploadFile) -> dict:
     """
     Sube un archivo de prueba al Vault.
 
-    Útil para probar que MinIO está bien configurado y los buckets
-    funcionan. Lo guarda como 'manual/{año}/{mes}/test/{hash}.{ext}'.
+    Útil para probar que el directorio del Vault está bien configurado y
+    los buckets (carpetas) funcionan. Lo guarda como 'manual/{año}/{mes}/test/{hash}.{ext}'.
     """
     try:
         content = await file.read()

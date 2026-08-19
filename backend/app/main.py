@@ -25,6 +25,7 @@ from app.routers import (
     tagger,
     test,
     transcribe,
+    vault as vault_router,
     worker as worker_router,
 )
 from app.services import VaultStorage
@@ -44,7 +45,7 @@ async def lifespan(app: FastAPI):
         version=settings.app_version,
     )
 
-    # Asegurar que los buckets de MinIO existen
+    # Asegurar que las carpetas del Vault existen
     try:
         vault = VaultStorage()
         result = vault.ensure_buckets()
@@ -100,6 +101,7 @@ app.include_router(extract.router)
 app.include_router(images.router)
 app.include_router(worker_router.router)
 app.include_router(panel.router)
+app.include_router(vault_router.router)
 
 
 @app.get("/")

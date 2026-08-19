@@ -31,7 +31,7 @@ from app.models.core import Item
 from app.models.media import Attachment
 from app.models.processing import Job
 from app.services.embedder import encolar_job_embed
-from app.services.minio_client import VaultStorage
+from app.services.vault_storage import VaultStorage
 from app.services.ollama_client import OllamaService
 
 logger = get_logger(__name__)
@@ -93,7 +93,7 @@ def encolar_job_caption(db: Session, item_id) -> bool:
 
 def _bucket_y_key(minio_path: str) -> tuple[str, str]:
     bucket, _, key = minio_path.partition("/")
-    return bucket or settings.minio_bucket_raw, key
+    return bucket or "raw", key
 
 
 def _dims_y_modo(content: bytes) -> tuple[int, int, str] | None:
@@ -162,7 +162,7 @@ def procesar_item(db: Session, item: Item, *, vault: VaultStorage | None = None,
     try:
         content = vault.get(bucket, key)
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": f"minio: {e}"}
+        return {"ok": False, "error": f"vault: {e}"}
     if not content:
         return {"ok": False, "error": "binario vacío"}
 

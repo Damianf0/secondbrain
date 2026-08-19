@@ -24,7 +24,7 @@ from ..docker_client import DockerComposeClient, DockerError
 from ..worker_thread import BackgroundJob
 
 # Servicios "nuestros" en el orden en que querés verlos arriba.
-_ORDEN = ["backend", "frontend", "ollama", "whisper", "qdrant", "minio", "postgres", "bridge"]
+_ORDEN = ["backend", "frontend", "ollama", "whisper", "qdrant", "postgres", "bridge"]
 
 
 def _color_for_state(state: str, health: str) -> str:

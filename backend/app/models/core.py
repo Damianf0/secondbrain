@@ -148,7 +148,7 @@ class Item(Base):
     Unidad mínima de información del Vault.
 
     Puede ser un mensaje de WhatsApp, un email, una nota manual, etc.
-    El contenido real de archivos (audios, imágenes) vive en MinIO;
+    El contenido real de archivos (audios, imágenes) vive en el Vault (filesystem);
     acá solo guardamos metadata y texto.
     """
 

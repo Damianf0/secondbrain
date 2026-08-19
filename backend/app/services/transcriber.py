@@ -2,7 +2,7 @@
 Transcriber — Sprint 7.
 
 Toma un `Item` con `media_tipo='audio'` (que tiene un `media.Attachment`
-asociado), descarga el binario de MinIO, lo manda a Whisper, y escribe la
+asociado), descarga el binario del Vault, lo manda a Whisper, y escribe la
 transcripción de vuelta en el `Item`:
 
   - `item.contenido` se completa con el texto transcrito (si estaba vacío)
@@ -25,7 +25,7 @@ from app.models.core import Item
 from app.models.media import Attachment
 from app.models.processing import Job
 from app.services.embedder import encolar_job_embed
-from app.services.minio_client import VaultStorage
+from app.services.vault_storage import VaultStorage
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -65,7 +65,7 @@ def encolar_job_transcribe(db: Session, item_id) -> bool:
 def _bucket_y_key(minio_path: str) -> tuple[str, str]:
     """`raw/whatsapp/...` → (bucket='raw', key='whatsapp/...')."""
     bucket, _, key = minio_path.partition("/")
-    return bucket or settings.minio_bucket_raw, key
+    return bucket or "raw", key
 
 
 def _whisper_transcribe(audio_bytes: bytes, filename: str, language: str = "es") -> dict:
@@ -100,7 +100,7 @@ def transcribir_item(db: Session, item: Item, *, vault: VaultStorage | None = No
     try:
         content = vault.get(bucket, key)
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": f"minio: {e}"}
+        return {"ok": False, "error": f"vault: {e}"}
     if not content:
         return {"ok": False, "error": "binario vacío"}
 

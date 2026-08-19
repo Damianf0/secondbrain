@@ -53,11 +53,11 @@ async def health_overview() -> dict:
     except Exception as e:
         services_status["qdrant"] = {"ok": False, "error": str(e)}
 
-    # MinIO
+    # Vault (filesystem)
     try:
-        services_status["minio"] = VaultStorage().health()
+        services_status["vault"] = VaultStorage().health()
     except Exception as e:
-        services_status["minio"] = {"ok": False, "error": str(e)}
+        services_status["vault"] = {"ok": False, "error": str(e)}
 
     # Whisper (async)
     try:

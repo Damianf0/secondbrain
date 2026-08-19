@@ -21,7 +21,7 @@ from app.models.core import Conversacion, Item, Persona
 from app.models.media import Attachment
 from app.services import extractor
 from app.services.embedder import encolar_job_embed
-from app.services.minio_client import VaultStorage
+from app.services.vault_storage import VaultStorage
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/extract", tags=["extract"])

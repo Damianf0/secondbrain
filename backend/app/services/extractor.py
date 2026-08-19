@@ -2,7 +2,7 @@
 Extractor de texto de documentos — Sprint 6.
 
 Toma un `Item` con `media_tipo='documento'` (con `media.Attachment` asociado),
-descarga el binario de MinIO, detecta el formato y extrae texto:
+descarga el binario del Vault, detecta el formato y extrae texto:
 
   - PDF: pdfplumber (mantiene mejor el layout que pypdf)
   - DOCX: python-docx (parrafos + tablas)
@@ -21,16 +21,14 @@ import chardet
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.core.logging import get_logger
 from app.models.core import Item
 from app.models.media import Attachment
 from app.models.processing import Job
 from app.services.embedder import encolar_job_embed
-from app.services.minio_client import VaultStorage
+from app.services.vault_storage import VaultStorage
 
 logger = get_logger(__name__)
-settings = get_settings()
 
 # Máximo de caracteres que guardamos en item.contenido (para no inflar Postgres)
 _MAX_CONTENIDO = 50_000
@@ -179,7 +177,7 @@ def _detectar_y_extraer(content: bytes, filename: str | None, mime: str | None) 
 
 def _bucket_y_key(minio_path: str) -> tuple[str, str]:
     bucket, _, key = minio_path.partition("/")
-    return bucket or settings.minio_bucket_raw, key
+    return bucket or "raw", key
 
 
 def extraer_item(db: Session, item: Item, *, vault: VaultStorage | None = None) -> dict:
@@ -200,7 +198,7 @@ def extraer_item(db: Session, item: Item, *, vault: VaultStorage | None = None) 
     try:
         content = vault.get(bucket, key)
     except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": f"minio: {e}"}
+        return {"ok": False, "error": f"vault: {e}"}
     if not content:
         return {"ok": False, "error": "binario vacío"}
 

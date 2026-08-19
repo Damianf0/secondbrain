@@ -70,7 +70,7 @@ with col1:
                 elif name == "qdrant" and "collections" in info:
                     cnt = len(info["collections"])
                     detail = f" — collections: {cnt}"
-                elif name == "minio" and "buckets" in info:
+                elif name == "vault" and "buckets" in info:
                     detail = f" — buckets: {', '.join(info['buckets'])}"
                 st.markdown(f"{icon} **{label}**{detail}")
             else:

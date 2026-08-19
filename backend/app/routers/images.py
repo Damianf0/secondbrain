@@ -15,17 +15,15 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.core.logging import get_logger
 from app.db.session import get_db
 from app.models.core import Conversacion, Item, Persona
 from app.models.media import Attachment
 from app.services import imager
 from app.services.embedder import encolar_job_embed
-from app.services.minio_client import VaultStorage
+from app.services.vault_storage import VaultStorage
 
 logger = get_logger(__name__)
-settings = get_settings()
 router = APIRouter(prefix="/api/images", tags=["images"])
 
 
@@ -198,14 +196,12 @@ def listar_imgs(
             select(Conversacion).where(Conversacion.conversation_id == it.conversation_id)
         ).scalars().first()
         img_data = (it.datos or {}).get("imagen") or {}
-        # presigned URL para mostrar la imagen en el frontend
+        # URL para mostrar la imagen en el frontend -- el Vault sirve el archivo
+        # directo desde el propio backend, ya accesible desde el browser sin
+        # reescribir hosts (a diferencia del endpoint interno de MinIO)
         bucket, _, key = (att.minio_path or "").partition("/")
         try:
             presigned = vault.get_presigned_url(bucket, key, expires_seconds=3600) if att.minio_path else None
-            # En entorno Docker el endpoint interno es 'minio:9000' que no resuelve desde el browser.
-            # Reescribimos a localhost (o a settings.minio_public si lo definimos a futuro).
-            if presigned:
-                presigned = presigned.replace(f"http://{settings.minio_endpoint}", "http://localhost:9000")
         except Exception:  # noqa: BLE001
             presigned = None
         out.append(

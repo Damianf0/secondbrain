@@ -25,7 +25,7 @@ from app.models.media import Attachment
 from app.services.embedder import encolar_job_embed
 from app.services.extractor import encolar_job_extract
 from app.services.imager import encolar_job_caption
-from app.services.minio_client import VaultStorage
+from app.services.vault_storage import VaultStorage
 from app.services.phones import normalizar_telefono
 from app.services.transcriber import encolar_job_transcribe
 
@@ -140,7 +140,7 @@ def _persistir_media(
     media_mimetype: str | None,
     fecha: datetime,
 ) -> Attachment | None:
-    """Decodifica el base64, sube a MinIO (dedup por SHA-256) y crea Attachment.
+    """Decodifica el base64, sube al Vault (dedup por SHA-256) y crea Attachment.
 
     Idempotente: si ya hay un Attachment con el mismo sha256 para este item lo
     devuelve sin tocar nada.

@@ -59,7 +59,7 @@ st.markdown("---")
 # Detalle por servicio
 # -----------------------------------------------------------------
 
-tabs = st.tabs(["Ollama", "Qdrant", "MinIO (Vault)", "Whisper", "Postgres"])
+tabs = st.tabs(["Ollama", "Qdrant", "Vault", "Whisper", "Postgres"])
 
 services = overview.get("services", {})
 
@@ -119,11 +119,11 @@ with tabs[1]:
     else:
         st.error(info.get("error", "No conectado"))
 
-# MinIO
+# Vault
 with tabs[2]:
-    info = services.get("minio", {})
+    info = services.get("vault", {})
     if info.get("ok"):
-        st.success(f"Conectado a {info.get('endpoint')}")
+        st.success(f"Vault en {info.get('path')}")
         st.write(f"**Buckets:** {', '.join(info.get('buckets', []))}")
         try:
             stats = api.vault_stats()
@@ -142,8 +142,6 @@ with tabs[2]:
                 st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
         except Exception as e:
             st.warning(f"No se pudieron obtener stats: {e}")
-
-        st.caption("Console MinIO: http://localhost:9001")
     else:
         st.error(info.get("error", "No conectado"))
 

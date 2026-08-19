@@ -1,7 +1,7 @@
 """
 Vault - Storage de archivos crudos.
 
-Sprint 0: subir archivos de prueba para validar que MinIO funciona.
+Sprint 0: subir archivos de prueba para validar que el Vault funciona.
 """
 
 import streamlit as st
@@ -18,7 +18,7 @@ if not api.is_alive():
     st.stop()
 
 st.caption(
-    "El Vault guarda los archivos crudos (audios, imágenes, documentos) en MinIO. "
+    "El Vault guarda los archivos crudos (audios, imágenes, documentos) en disco. "
     "Esta página es para probar que el storage anda. En sprints siguientes los "
     "archivos van a entrar automáticamente vía el bridge de WhatsApp."
 )
@@ -88,18 +88,12 @@ if uploaded is not None:
 
                 # Si es imagen, mostrarla
                 if uploaded.type and uploaded.type.startswith("image/"):
-                    st.image(result["presigned_url"], caption="Vista previa desde MinIO")
+                    st.image(result["presigned_url"], caption="Vista previa desde el Vault")
                 elif uploaded.type and uploaded.type.startswith("audio/"):
                     st.audio(result["presigned_url"])
 
-                st.caption("URL temporal (1h):")
+                st.caption("URL del archivo:")
                 st.code(result["presigned_url"], language=None)
 
             except Exception as e:
                 st.error(f"Error: {e}")
-
-st.markdown("---")
-st.caption(
-    "💡 La consola web de MinIO está en http://localhost:9001 "
-    "(usuario y password en tu .env)"
-)

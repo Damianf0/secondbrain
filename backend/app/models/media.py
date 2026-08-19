@@ -1,7 +1,7 @@
 """
 Models del schema `media`: metadata de archivos del Vault.
 
-Los binarios viven en MinIO. Acá guardamos dónde están y qué son.
+Los binarios viven en el Vault (filesystem). Acá guardamos dónde están y qué son.
 """
 
 import uuid
@@ -38,7 +38,7 @@ class Attachment(Base):
     # audio / imagen / video / documento / sticker / gif
     tipo: Mapped[str] = mapped_column(String(30), nullable=False)
     filename_original: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    # Path completo en MinIO: {bucket}/{source}/{año}/{mes}/{tipo}/{sha256}.{ext}
+    # Path completo en el Vault: {bucket}/{source}/{año}/{mes}/{tipo}/{sha256}.{ext}
     minio_path: Mapped[str] = mapped_column(String(1000), nullable=False)
     # SHA-256 del archivo para deduplicación
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
