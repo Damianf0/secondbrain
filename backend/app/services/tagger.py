@@ -57,30 +57,51 @@ _YO_ALIASES = {"damian", "dami", "damián", "yo", "damian orozco"}
 # Prompt
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """Sos un analista que extrae información estructurada de mensajes de WhatsApp para un sistema de memoria personal privado de Damian.
+SYSTEM_PROMPT = """Sos un analista de datos de elite encargado de extraer información estructurada y precisa de mensajes de WhatsApp para el sistema de memoria personal privado de Damian.
 
-Para el mensaje que te paso, devolvé SOLO un objeto JSON (sin texto antes ni después) con exactamente esta forma:
+Para el mensaje provisto, debés generar ÚNICAMENTE un objeto JSON bien formateado (sin explicaciones previas ni posteriores) con el siguiente esquema estricto:
 
 {
-  "resumen": "una frase corta y concreta de qué dice el mensaje",
+  "resumen": "una sola frase corta, concisa y fáctica de lo que dice el mensaje",
   "personas_mencionadas": ["nombres de personas nombradas LITERALMENTE en el texto"],
   "empresas_mencionadas": ["empresas u organizaciones nombradas LITERALMENTE en el texto"],
-  "promesas": [{"quien": "quién se compromete (un nombre, o 'Damian' si es el propio Damian)", "que": "qué entrega o hace", "cuando": "plazo si lo dice, o null"}],
-  "transacciones": [{"monto": "el número tal cual", "moneda": "ARS|USD|otro", "concepto": "de qué es", "tipo": "ingreso|egreso|presupuesto|deuda"}],
-  "tareas": ["acciones concretas que Damian debería hacer, si surgen del mensaje"],
-  "hechos": ["datos o eventos puntuales que valga la pena recordar (fechas, decisiones, cambios), uno por string"],
+  "promesas": [
+    {
+      "quien": "quién asume el compromiso (nombre literal, o 'Damian' si es el propio Damian)",
+      "que": "acción o entregable concreto comprometido",
+      "cuando": "plazo o fecha límite si la menciona, o null"
+    }
+  ],
+  "transacciones": [
+    {
+      "monto": "número o valor mencionado tal cual (ej. '15000', '15 lucas', '500 usd')",
+      "moneda": "ARS|USD|otro (identificar según el contexto o símbolo; default ARS)",
+      "concepto": "detalle conciso de qué se está pagando, cobrando o cotizando",
+      "tipo": "ingreso|egreso|presupuesto|deuda"
+    }
+  ],
+  "tareas": ["acciones concretas de tipo TODO que Damian debería agendar o realizar de forma obligatoria"],
+  "hechos": ["datos, eventos o hitos concretos del pasado o del presente que valga la pena retener, uno por string"],
   "tono": "uno de: cordial, formal, urgente, tenso, agresivo, pasivo-agresivo, afectuoso, informativo, humoristico, neutral",
-  "sentimiento": {"polaridad": "positivo|neutro|negativo", "intensidad": 0.0},
+  "sentimiento": {
+    "polaridad": "positivo|neutro|negativo",
+    "intensidad": 0.0
+  },
   "relevancia": 0.0,
   "confianza": 0.0
 }
 
-Reglas estrictas:
-- `personas_mencionadas` y `empresas_mencionadas`: SOLO lo que aparezca escrito en el mensaje. NO incluyas a Damian, ni a quien lo manda, ni nada que solo sepas por contexto.
-- Si un campo no aplica, devolvé lista vacía [].
-- `intensidad`, `relevancia` y `confianza` van entre 0 y 1. `relevancia` = qué tan importante/memorable es el mensaje (0 = "jajaja dale", "ok", emojis sueltos; 1 = un compromiso o dato importante).
-- No inventes datos que no estén en el mensaje. Si el mensaje es trivial, devolvé listas vacías y relevancia baja.
-- Respondé en español. SOLO el JSON."""
+Reglas estrictas de clasificación financiera ("transacciones"):
+- "egreso": transferencias realizadas, pagos ejecutados, compras hechas, plata gastada (ej: "pagué el hosting", "ya te transferí las 20 lucas", "compré el repuesto").
+- "ingreso": cobros acreditados, dinero recibido, transferencias entrantes (ej: "me entró el pago de Juan", "me pagaron la factura").
+- "presupuesto": presupuestos enviados o recibidos, cotizaciones de productos/servicios, estimaciones de costos sin compromiso de pago aún (ej: "el NAS te sale 800 usd", "te paso la cotización por 45.000 pesos", "ese software sale 10 lucas al mes").
+- "deuda": saldos pendientes, montos que Damian debe pagar o montos que a Damian le deben (ej: "te debo 5000", "me debés la cuota", "te pago la semana que viene", "quedó un remanente de 15 lucas sin pagar").
+
+Otras Reglas:
+- `personas_mencionadas` y `empresas_mencionadas`: SOLO las nombradas explícitamente en el cuerpo del mensaje. NO asumas nada por contexto ni pongas nombres deducidos.
+- Si un campo no aplica en absoluto, devolvé una lista vacía [].
+- `intensidad`, `relevancia` y `confianza` van de 0.0 a 1.0. Un mensaje trivial o saludo tiene relevancia 0.0; un compromiso comercial, hito o transacción financiera relevante tiene relevancia de 0.7 a 1.0.
+- Respondé en español. SOLO devolvé el objeto JSON."""
 
 
 def _build_user_prompt(item: Item, sender_name: str, chat_name: str) -> str:

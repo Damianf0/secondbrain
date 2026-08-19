@@ -45,15 +45,14 @@ payload `fecha` (string ISO 8601 / RFC3339), en vez del approach de v1: pedir 4x
 **Estado**: portado el 19 de agosto de 2026, validado con 3 rangos de fecha distintos contra
 datos reales (`/api/chat/retrieve`). Ver `backend/app/services/retriever.py` actual.
 
-## 3. Prompt del tagger mejorado — ⏳ pendiente de portar
+## 3. Prompt del tagger mejorado — ✅ ya portado
 
 `backend/app/services/tagger.py` en v2 tenía reglas de clasificación financiera mucho más
 detalladas, con ejemplos concretos para `ingreso`/`egreso`/`presupuesto`/`deuda`, y un JSON mejor
-especificado. Mejora de calidad de extracción, más "blanda" (no hay forma de medirla sin
-correrla contra datos reales) que las dos anteriores. Texto **ya limpio de PII** (los originales
-mencionaban la empresa, la clínica y el partido de un tercero real — acá reemplazado siguiendo el
-mismo criterio que v1 aplicó en su día: se cae el contexto de empresa/ubicación, "Esteban" → "Juan"
-como nombre de ejemplo):
+especificado. Texto **limpio de PII** antes de portarlo (los originales mencionaban la empresa, la
+clínica y el partido de un tercero real — acá reemplazado siguiendo el mismo criterio que v1
+aplicó en su día: se cae el contexto de empresa/ubicación, "Esteban" → "Juan" como nombre de
+ejemplo):
 
 ```
 SYSTEM_PROMPT = """Sos un analista de datos de elite encargado de extraer información estructurada y precisa de mensajes de WhatsApp para el sistema de memoria personal privado de Damian.
@@ -95,12 +94,18 @@ Reglas estrictas de clasificación financiera ("transacciones"):
 - "ingreso": cobros acreditados, dinero recibido, transferencias entrantes (ej: "me entró el pago de Juan", "me pagaron la factura").
 - "presupuesto": presupuestos enviados o recibidos, cotizaciones de productos/servicios, estimaciones de costos sin compromiso de pago aún (ej: "el NAS te sale 800 usd", "te paso la cotización por 45.000 pesos", "ese software sale 10 lucas al mes").
 - "deuda": saldos pendientes, montos que Damian debe pagar o montos que a Damian le deben (ej: "te debo 5000", "me debés la cuota", "te pago la semana que viene", "quedó un remanente de 15 lucas sin pagar").
-"""
+
+Otras Reglas:
+- `personas_mencionadas` y `empresas_mencionadas`: SOLO las nombradas explícitamente en el cuerpo del mensaje. NO asumas nada por contexto ni pongas nombres deducidos.
+- Si un campo no aplica en absoluto, devolvé una lista vacía [].
+- `intensidad`, `relevancia` y `confianza` van de 0.0 a 1.0. Un mensaje trivial o saludo tiene relevancia 0.0; un compromiso comercial, hito o transacción financiera relevante tiene relevancia de 0.7 a 1.0.
+- Respondé en español. SOLO devolvé el objeto JSON."""
 ```
 
-**Para portarlo**: reemplazar el `SYSTEM_PROMPT` de `backend/app/services/tagger.py` por este
-texto. No se hizo en esta sesión porque es un cambio de comportamiento del tagger (no solo de
-infraestructura) y conviene decidirlo con intención, no de paso.
+**Estado**: portado el 19 de agosto de 2026 a `backend/app/services/tagger.py`. Validado
+re-corriendo los mismos 8 casos de prueba del A/B de modelos (sección 6.4 del documento de
+rediseño) contra `qwen3:8b`: arregló los dos errores de clasificación que habíamos encontrado con
+el prompt viejo — `presupuesto` y `deuda` ya no se confunden con `egreso`.
 
 ## 4. Restyle visual de Streamlit — copiado, no activado
 
