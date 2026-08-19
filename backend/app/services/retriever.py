@@ -7,9 +7,11 @@ de la memoria: mensajes (collection `messages`) y hechos extraídos (collection
 las citas tienen el nombre canónico actualizado del contacto / la conversación.
 
 Soporta filtros estructurados opcionales (persona, conversación, rango de
-fechas). Los de persona/conversación van como filtro nativo de Qdrant; el de
-fechas se aplica como post-filter en Python parseando las ISO 8601 a datetime
-(para que distintos timezones se comparen correctamente).
+fechas), todos como filtro nativo de Qdrant — el de fechas usa un `range`
+sobre el payload `fecha` (string ISO 8601, compatible RFC3339), sin sobre-pedir
+ni post-filtrar en Python. Portado de una implementación ya probada en v2 de
+este proyecto (ver rediseno-secondbrain.md §5.2) — la versión anterior pedía
+4x de más y descartaba en Python lo que caía fuera de rango.
 """
 
 from datetime import datetime, timezone
@@ -34,20 +36,12 @@ def _nombre_persona(db: Session, pid) -> str | None:
     return p.nombre_canonico if p else None
 
 
-def _build_filter(persona_id: str | None, conversation_id: str | None) -> dict | None:
-    must = []
-    if persona_id:
-        must.append({"key": "persona_id", "match": {"value": str(persona_id)}})
-    if conversation_id:
-        must.append({"key": "conversation_id", "match": {"value": conversation_id}})
-    return {"must": must} if must else None
-
-
 def _parse_dt(iso: str | None) -> datetime | None:
+    """Parsea ISO 8601 completo o solo fecha (`YYYY-MM-DD`)."""
     if not iso:
         return None
     try:
-        dt = datetime.fromisoformat(iso)
+        dt = datetime.strptime(iso, "%Y-%m-%d") if len(iso) == 10 else datetime.fromisoformat(iso)
     except (TypeError, ValueError):
         return None
     if dt.tzinfo is None:
@@ -55,17 +49,27 @@ def _parse_dt(iso: str | None) -> datetime | None:
     return dt
 
 
-def _within(iso: str | None, desde: datetime | None, hasta: datetime | None) -> bool:
-    if not desde and not hasta:
-        return True
-    dt = _parse_dt(iso)
-    if dt is None:
-        return False
-    if desde and dt < desde:
-        return False
-    if hasta and dt > hasta:
-        return False
-    return True
+def _build_filter(
+    persona_id: str | None,
+    conversation_id: str | None,
+    fecha_desde_iso: str | None = None,
+    fecha_hasta_iso: str | None = None,
+) -> dict | None:
+    must = []
+    if persona_id:
+        must.append({"key": "persona_id", "match": {"value": str(persona_id)}})
+    if conversation_id:
+        must.append({"key": "conversation_id", "match": {"value": conversation_id}})
+
+    range_filter = {}
+    if fecha_desde_iso:
+        range_filter["gte"] = fecha_desde_iso
+    if fecha_hasta_iso:
+        range_filter["lte"] = fecha_hasta_iso
+    if range_filter:
+        must.append({"key": "fecha", "range": range_filter})
+
+    return {"must": must} if must else None
 
 
 def recuperar(
@@ -85,10 +89,11 @@ def recuperar(
       {tipo: 'message'|'fact', score, item_id, conversation_id, conversation_nombre,
        persona_nombre, fecha, texto, resumen?, tono?}
 
-    Filtros:
-      - persona_id / conversation_id → match exacto en payload (Qdrant nativo).
-      - fecha_desde / fecha_hasta → strings ISO 8601, post-filter (sobre-pide
-        un múltiplo k para compensar lo que se descarte).
+    Filtros, todos nativos de Qdrant (sin post-filter ni overfetch):
+      - persona_id / conversation_id → match exacto en payload.
+      - fecha_desde / fecha_hasta → ISO 8601 o `YYYY-MM-DD`; se normalizan a
+        inicio/fin de día cuando viene solo la fecha, y se pasan como `range`
+        sobre el payload `fecha`.
     """
     pregunta = (pregunta or "").strip()
     if not pregunta:
@@ -99,29 +104,35 @@ def recuperar(
     if not qd.collection_exists(settings.qdrant_collection_messages):
         return []
 
-    # bge-m3 pesa solo ~1.2 GB en VRAM y convive con qwen3:8b (5.2 GB) sin
-    # forzar swap (post-migración 2026-05-16). El embed va a GPU normal.
+    # Embed de la query — va a GPU normal, serializado por _VRAM_LOCK en
+    # ollama_client (ver ese módulo).
     qvec = ollama.embed(pregunta)["embedding"]
-    qfilter = _build_filter(persona_id, conversation_id)
+
     desde_dt = _parse_dt(fecha_desde)
     hasta_dt = _parse_dt(fecha_hasta)
-    rango = desde_dt is not None or hasta_dt is not None
-    # Si hay filtro de fechas (post-filter), sobre-pedimos para tener margen
-    overfetch = 4 if rango else 1
+    # Si vino solo la fecha (YYYY-MM-DD), extender a los límites del día.
+    if desde_dt and fecha_desde and len(fecha_desde) == 10:
+        desde_dt = desde_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    if hasta_dt and fecha_hasta and len(fecha_hasta) == 10:
+        hasta_dt = hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    qfilter = _build_filter(
+        persona_id,
+        conversation_id,
+        desde_dt.isoformat() if desde_dt else None,
+        hasta_dt.isoformat() if hasta_dt else None,
+    )
 
     hits: list[dict] = []
     raw_msgs = qd.search(
         settings.qdrant_collection_messages,
         qvec,
-        limit=max(1, k_messages * overfetch),
+        limit=k_messages,
         query_filter=qfilter,
         score_threshold=score_threshold,
     ) if k_messages > 0 else []
     for hit in raw_msgs:
         p = hit["payload"]
-        fecha = p.get("fecha")
-        if rango and not _within(fecha, desde_dt, hasta_dt):
-            continue
         hits.append({
             "tipo": "message",
             "score": round(hit["score"], 4),
@@ -129,28 +140,23 @@ def recuperar(
             "conversation_id": p.get("conversation_id"),
             "conversation_nombre": p.get("conversation_nombre"),
             "persona_nombre": p.get("persona_nombre"),
-            "fecha": fecha,
+            "fecha": p.get("fecha"),
             "direccion": p.get("direccion"),
             "tono": p.get("tono"),
             "resumen": p.get("resumen"),
             "texto": p.get("texto") or "",
         })
-        if len([h for h in hits if h["tipo"] == "message"]) >= k_messages:
-            break
 
     if k_facts > 0 and qd.collection_exists(settings.qdrant_collection_facts):
         raw_facts = qd.search(
             settings.qdrant_collection_facts,
             qvec,
-            limit=max(1, k_facts * overfetch),
+            limit=k_facts,
             query_filter=qfilter,
             score_threshold=score_threshold,
         )
         for hit in raw_facts:
             p = hit["payload"]
-            fecha = p.get("fecha")
-            if rango and not _within(fecha, desde_dt, hasta_dt):
-                continue
             hits.append({
                 "tipo": "fact",
                 "score": round(hit["score"], 4),
@@ -158,12 +164,10 @@ def recuperar(
                 "conversation_id": p.get("conversation_id"),
                 "conversation_nombre": p.get("conversation_nombre"),
                 "persona_nombre": _nombre_persona(db, p.get("persona_id")),
-                "fecha": fecha,
+                "fecha": p.get("fecha"),
                 "fact_tipo": p.get("tipo"),
                 "texto": p.get("texto") or "",
             })
-            if len([h for h in hits if h["tipo"] == "fact"]) >= k_facts:
-                break
 
     # Refrescar metadata de los mensajes desde Postgres (nombre canónico, conv display)
     item_ids = {h["item_id"] for h in hits if h.get("item_id")}
