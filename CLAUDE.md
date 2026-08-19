@@ -1,6 +1,15 @@
 # SecondBrain — Contexto del proyecto
 
 > **Para retomar desde Claude Code CLI**: pegar este documento al inicio de la sesión, o guardarlo como `CLAUDE.md` en la raíz del repo (Claude Code lo lee automáticamente).
+>
+> **Actualizado 19 de agosto de 2026** — este documento estuvo congelado en el estado de Sprint 0
+> (9 de mayo) durante 3 meses mientras el código avanzaba muy por delante. Si estás retomando
+> después de otra pausa larga, no confíes en las secciones "Plan de Sprints" / "Arquitectura" de
+> abajo para saber qué existe de verdad — son el diseño original, con partes nunca construidas
+> (dinámica conversacional, salud relacional, scheduler de niveles). Las secciones "Stack final
+> consolidado", "Estado actual" y "Decisiones técnicas tomadas" sí están al día. Para el detalle
+> completo de auditoría y de qué se recuperó de una v2 que se llegó a perder, ver
+> `docs/v2-hallazgos.md`.
 
 ---
 
@@ -54,19 +63,38 @@ Implicaciones del límite de 8GB VRAM:
 | Frontend (POC) | Streamlit | latest |
 | Base relacional | PostgreSQL 16 + pgvector | `pgvector/pgvector:pg16` |
 | Vector DB | Qdrant | `qdrant/qdrant:latest` |
-| Object storage (Vault) | MinIO (S3-compatible) | `minio/minio:latest` |
-| LLM principal | Ollama + Gemma 4 12B | `gemma4:12b` |
-| LLM alternativo | Qwen3-VL 8B (texto+visión) | `qwen3-vl:8b` |
-| Embeddings | qwen3-embedding 4B | `qwen3-embedding:4b` |
-| Transcripción | Whisper Large V3 Turbo (faster-whisper) | `onerahmet/openai-whisper-asr-webservice:latest-gpu` |
-| Bridge WhatsApp (Sprint 2) | Node.js + whatsapp-web.js | — |
+| Vault (archivos crudos) | Filesystem local (volumen Docker, servido por `GET /api/vault/file`) | — |
+| LLM principal (chat + tagger) | Ollama + Qwen3 8B | `qwen3:8b` |
+| LLM visión | Qwen3-VL 8B | `qwen3-vl:8b` |
+| Embeddings | BGE-M3 | `bge-m3` |
+| Transcripción | Whisper Large V3 Turbo (faster-whisper), **CPU** (decisión, ver §10 de `docs/pipeline.md`) | `onerahmet/openai-whisper-asr-webservice:latest` |
+| Bridge WhatsApp | Node.js + [Baileys](https://github.com/WhiskeySockets/Baileys) | `@whiskeysockets/baileys` |
 | Containerización | Docker Compose | — |
 
-### Nota importante sobre los modelos
+### Nota sobre los modelos (resuelto, ya no es una decisión pendiente)
 
-Los modelos `gemma4:12b`, `qwen3-vl:8b` y `qwen3-embedding:4b` son las opciones más actuales (2026). En el plan original había sugerido `qwen2.5-vl:7b` y `bge-m3` pero verificamos versiones actuales y se cambiaron por estos.
+`qwen3:8b` ganó el benchmark inicial contra Gemma 4 12B (que ni entra cómodo en 8GB VRAM junto a
+lo demás). `bge-m3` reemplazó a `qwen3-embedding:4b` tras un A/B con datos reales (mejor recall en
+español rioplatense, y a diferencia del embedding anterior convive con `qwen3:8b` en VRAM sin
+hacer swap). MinIO se reemplazó por filesystem local — para un vault de un solo usuario, un
+object storage S3 completo era más infraestructura de la que hacía falta. whatsapp-web.js se
+reemplazó por Baileys — más liviano (sin Chromium), y el motivo original de elegir whatsapp-web.js
+("ya lo estaba probando") no era una comparación técnica real.
 
-**Decisión pendiente: benchmark Gemma 4 12B vs Qwen3-VL 8B**. En Sprint 0 los descargamos los dos y elegiremos el principal por velocidad/calidad real con datos míos.
+Se re-evaluaron tres candidatos para reemplazar `qwen3:8b`, todos con hardware real, no por
+intuición ni por lo que dice un blog:
+
+- `qwen3.5:9b` — no entra en 8GB (72% GPU / 28% CPU offload), 49.5s de latencia para una
+  respuesta de una oración (vs 586ms de `qwen3:8b`). Descartado.
+- `gemma4:e4b` — directamente crashea (`llama runner process has terminated`), necesita 10GB.
+  Descartado.
+- `gemma3:4b` — este sí es interesante: más liviano (4.3GB vs 6.0GB) y más rápido (130 vs 90
+  tok/s). Probado contra el prompt real del tagger (8 casos cubriendo cada rama del schema):
+  empató en cantidad de errores con `qwen3:8b` pero **inventó una persona mencionada que no
+  estaba en el mensaje, dos veces**, y devolvió un JSON completamente vacío una vez. Para un
+  sistema que depende de no inventar hechos, no se adoptó — pero queda como candidato si el
+  tagger algún día necesita correr más liviano y se le encuentra una forma de controlar mejor
+  las alucinaciones (few-shot más estricto, temperature más baja, etc.).
 
 ---
 
@@ -76,14 +104,15 @@ Los modelos `gemma4:12b`, `qwen3-vl:8b` y `qwen3-embedding:4b` son las opciones 
 
 **Postgres** organizado en **5 schemas**:
 - `core`: items, personas, empresas, proyectos, hechos
-- `media`: metadata de archivos (binarios viven en MinIO)
+- `media`: metadata de archivos (binarios viven en el Vault, filesystem local)
 - `processing`: cola de jobs, history
-- `analytics`: dinámicas conversacionales, salud relacional
+- `analytics`: dinámicas conversacionales, salud relacional (reservado, no implementado todavía)
 - `audit`: logs sensibles
 
-**Qdrant** para vectores (embeddings). Múltiples collections previstas (una por tipo: messages, facts, captions).
+**Qdrant** para vectores (embeddings). Collections en uso: `messages`, `facts`.
 
-**MinIO** para archivos crudos del Vault:
+**Vault** (filesystem local, `backend/app/services/vault_storage.py`, antes era MinIO) para
+archivos crudos:
 - Bucket `raw`: originales (audios .opus, imágenes, PDFs)
 - Bucket `derived`: thumbnails, transcripciones, OCR results
 - Bucket `exports`: exports manuales (.txt de WhatsApp)
@@ -130,37 +159,49 @@ Cada persona/empresa tiene **salud relacional** agregada (recalculada nocturname
 
 ## Plan de Sprints
 
-### Sprint 0 — Setup base ⚡ (TERMINADO, falta validación)
+**Estado real (19 de agosto de 2026): Sprints 0-7 construidos y en uso, no solo "planeados".**
+Ver "Estado actual" más abajo para la foto completa. Dejo la descripción original de cada sprint
+porque sigue siendo válida como resumen de alcance, con el estado real anotado:
 
-**Objetivo**: equipo configurado, servicios corriendo, modelos descargados, todo verde end-to-end.
+### Sprint 0 — Setup base ⚡ ✅ hecho y validado
 
-**Estado**: archivos creados, falta:
-1. Levantar `docker compose up -d` por primera vez
-2. Esperar descarga de modelos (~25 min)
-3. Validar dashboard verde en http://localhost:8501
-4. Hacer benchmark Gemma 4 vs Qwen3-VL con datos míos
+### Sprint 1 — Importación histórica WhatsApp 📥 ✅ hecho
 
-### Sprint 1 — Importación histórica WhatsApp 📥
+Parser de exports `.txt` de WhatsApp con mapeo de participantes a contactos canónicos. En uso:
+histórico real importado (decenas de miles de mensajes entre 2 conversaciones, ver "Estado
+actual"). *Ojo*: importar por sí solo NO encola procesamiento (embed/tagger) — es opt-in, hay que
+marcar la conversación `seguir=true` y encolar a mano (`POST /api/panel/conversations/{id}/enqueue`
+o `POST /api/embeddings/run`).
 
-Schema mínimo (`core.items`, `core.personas`, `media.attachments`, `processing.jobs`), parser de exports `.txt` de WhatsApp con filtro/mapeo de participantes a contactos canónicos, ingesta + almacenamiento en MinIO.
+### Sprint 2 — Bridge WhatsApp en vivo 📲 ✅ hecho (con Baileys, no whatsapp-web.js)
 
-### Sprint 2 — Bridge WhatsApp en vivo 📲
+Captura de mensajes en tiempo real (entrantes y salientes), con descarga de media. Migrado de
+whatsapp-web.js a Baileys en agosto 2026 — ver nota de stack arriba.
 
-Container Node.js con whatsapp-web.js (reusar patrones del proyecto previo), captura de mensajes nuevos en tiempo real (entrantes y salientes vía multi-device sync), QR en panel admin.
+### Sprint 3 — Pipeline de tagging 🧠 ✅ hecho (parcial respecto del diseño original)
 
-### Sprint 3 — Pipeline de tagging 🧠
+Prompt del tagger extrae resumen, personas/empresas mencionadas, promesas, transacciones
+(ingreso/egreso/presupuesto/deuda), tareas, hechos, tono (un campo, no la "dinámica
+conversacional" completa de la sección Arquitectura), sentimiento, relevancia, confianza.
+**No construido**: entity resolution sofisticada (hoy es match por teléfono/nombre exacto, no el
+sistema de aliases inteligente descripto en Arquitectura), salud relacional, dinámica
+conversacional por hilo.
 
-Prompt del tagger (extracción de hechos + tono + entidades), entity resolution, almacenamiento en `core.facts`, `core.promesas`, `core.transacciones`.
+### Sprint 4 — Embeddings y Q&A 💬 ✅ hecho
 
-### Sprint 4 — Embeddings y Q&A 💬
+Embeddings en Qdrant (`bge-m3`), retriever híbrido con filtro de fechas nativo (portado de una v2
+que se llegó a perder, ver `docs/v2-hallazgos.md`), chat funcional con citas de fuente. No se
+validó formalmente contra las 18 queries de referencia, pero el patrón funciona (caso real:
+resolver una consulta ambigua sobre un problema técnico contra miles de mensajes).
 
-Embeddings en Qdrant, retriever híbrido (semantic + estructurado), chat funcional, validación con las 18 queries.
+### Sprint 5 (imágenes), 6 (documentos), 7 (audios) — ✅ construidos
 
-### Sprints futuros
+Captioning de imágenes (`qwen3-vl:8b`, ventana nocturna 02-06h para no competir por VRAM),
+extracción de documentos (PDF/DOCX/XLSX/texto plano), transcripción de audio (Whisper en CPU).
 
-5: Imágenes con tiered processing (OCR + captioning) | 6: Documentos (PDFs, Word, Excel) | 7: Audios (Whisper en pipeline) | 8: Conector Gmail | 9: Memoria estructurada (Memori/MemPalace) | 10: Briefings proactivos | 11+: Knowledge graph, salud relacional, etc.
+### Sprints futuros (sin cambios respecto del plan original)
 
-**Camino acordado**: Sprint 1 prioriza WhatsApp (no Gmail) porque es donde está el flujo de trabajo real.
+8: Conector Gmail | 9: Memoria estructurada | 10: Briefings proactivos | 11+: Knowledge graph, salud relacional, dinámica conversacional completa, etc.
 
 ---
 
@@ -184,13 +225,15 @@ Decisión: **guardar TODOS los binarios** (es un Vault, no un índice). Hash SHA
 
 ✅ **uv** como gestor de paquetes Python (no poetry/pip)
 ✅ **Postgres 16** con pgvector (no MySQL — MySQL es para clínica, esto es proyecto separado)
-✅ **MinIO** para storage (no filesystem directo) — más profesional, mejor escalabilidad
+🔄 ~~MinIO para storage~~ — **revertido en agosto 2026**: filesystem local. Para un vault de un
+solo usuario, un object storage S3 completo era más infraestructura de la que hacía falta.
 ✅ **Schemas en Postgres** desde día 1 (modularidad lógica)
 ✅ **Múltiples collections** en Qdrant
 ✅ **No backups** en POC (Damian se encarga manualmente)
 ✅ **Python desde cero** como única lógica de pipeline (no PHP, aunque el proyecto previo use PHP)
 ✅ **Streamlit** en POC; eventualmente migrar a panel propio (Reflex o Laravel forkeado del proyecto previo)
-✅ **whatsapp-web.js** (no Baileys) — Damian ya lo está probando
+🔄 ~~whatsapp-web.js~~ — **revertido en agosto 2026**: Baileys. Más liviano (sin Chromium), y el
+motivo original para elegir whatsapp-web.js no era técnico ("ya lo estaba probando").
 ✅ **Audios .opus tal cual** (sin conversión) — Whisper los lee directo
 ✅ **Sin cifrado** de archivos individuales en POC (confiar en BitLocker/LUKS del disco)
 ✅ **Capa de tono y dinámica conversacional** desde el inicio (campo en items + nivel 2 para hilos)
@@ -200,71 +243,71 @@ Decisión: **guardar TODOS los binarios** (es un Vault, no un índice). Hash SHA
 
 ## Estado actual (en qué estoy parado)
 
-**Sprint 0 — archivos creados**, listos para levantar. Estructura:
+**En uso activo, no un POC sin probar.** El stack completo corre (`docker compose up -d`), el
+bridge de WhatsApp está vinculado y capturando en vivo, y hay un histórico real importado
+corriendo su backfill de embeddings/tagging en background. Estructura real (no exhaustiva, la
+carpeta `app/` creció mucho desde Sprint 0):
 
 ```
 secondbrain/
-├── docker-compose.yml         ← 7 servicios + 2 init jobs
-├── .env.example               ← variables a completar
-├── .gitignore
-├── README.md
+├── docker-compose.yml         ← 8 servicios (sin MinIO — vault es filesystem)
+├── .env.example
+├── CLAUDE.md, README.md
 │
 ├── backend/                   ← FastAPI Python con uv
-│   ├── pyproject.toml
-│   ├── alembic.ini + alembic/
 │   ├── app/
-│   │   ├── main.py
-│   │   ├── config.py          ← pydantic-settings
-│   │   ├── core/logging.py    ← structlog
-│   │   ├── db/session.py
-│   │   ├── routers/
-│   │   │   ├── health.py      ← /api/health, /api/health/live, ready
-│   │   │   └── test.py        ← /api/test/llm, embed, vault, qdrant
-│   │   └── services/
-│   │       ├── ollama_client.py    ← wrapper completo
-│   │       ├── qdrant_client.py    ← wrapper con ensure_collection
-│   │       ├── minio_client.py     ← VaultStorage completo (raw + derived + presigned URLs)
-│   │       └── whisper_client.py
-│   └── tests/test_smoke.py
+│   │   ├── routers/           ← health, test, imports, bridge, contacts, conversations,
+│   │   │                         tagger, embeddings, chat, transcribe, extract, images,
+│   │   │                         worker, panel, vault
+│   │   └── services/          ← ollama_client (con lock de VRAM), qdrant_client,
+│   │                             vault_storage (filesystem, reemplazó minio_client),
+│   │                             whisper_client, embedder, tagger, retriever (filtro de
+│   │                             fechas nativo), chat, queue_worker, whatsapp_parser,
+│   │                             extractor, imager, transcriber, phones, vcard_parser
+│   └── tests/test_smoke.py    ← sigue siendo solo smoke tests de Sprint 0, sin cobertura
+│                                  del resto (deuda técnica conocida)
 │
-├── frontend/                  ← Streamlit
-│   ├── pyproject.toml
-│   ├── app.py                 ← home con overview
-│   ├── pages/
-│   │   ├── 1_Dashboard.py     ← detalle por servicio
-│   │   ├── 2_Benchmark.py     ← comparar Gemma 4 vs Qwen3-VL lado a lado
-│   │   └── 3_Vault.py         ← upload + preview
-│   └── lib/api_client.py
+├── frontend/                  ← Streamlit, 13 páginas (Dashboard, Vault, Import WhatsApp,
+│                                  Bridge WhatsApp, Contactos, Conversaciones, Tagger, Chat,
+│                                  Audios, Documentos, Imagenes, Worker, Benchmark)
 │
-├── docker/
-│   ├── backend/Dockerfile     ← Python 3.12 + uv
-│   ├── frontend/Dockerfile
-│   └── postgres/init.sql      ← extensiones + 5 schemas + spanish_unaccent
+├── panel/                     ← App de escritorio PySide6 (control/monitoreo, alternativa
+│                                  al browser) — no corre en Docker, se levanta aparte
+│
+├── bridge/                    ← Node.js + Baileys (antes whatsapp-web.js)
 │
 ├── docs/
-│   ├── sprints.md             ← plan completo + 18 queries de referencia
-│   ├── architecture.md
-│   └── setup-windows.md
+│   ├── v2-hallazgos.md        ← al día — qué se recuperó de una v2 archivada y qué se portó
+│   ├── pipeline.md            ← estado real medido al 2026-05-17, útil como referencia de
+│   │                             throughput aunque los números de hoy sean otros
+│   └── sprints.md, architecture.md, setup-windows.md ← desactualizados, no confiar
 │
 └── scripts/
-    ├── check-requirements.ps1 ← verifica Docker, GPU, RAM
-    └── warmup-models.sh
 ```
 
-**Lo que falta validar antes de Sprint 1**:
-1. `cp .env.example .env` y editar credenciales
-2. `docker compose up -d`
-3. Esperar descarga de modelos (~25 min primera vez): `docker compose logs -f ollama-init`
-4. Verificar dashboard verde: http://localhost:8501
-5. Probar LLM: ir a Benchmark → "Generar"
-6. Comparar modelos lado a lado en pestaña "Comparar"
-7. Subir un archivo de prueba al Vault
+**Deuda técnica conocida** (no inventada, encontrada auditando):
+- Sin tests para casi nada de lo construido después de Sprint 0.
+- El import histórico (`/api/import/whatsapp/import`) no encola procesamiento automáticamente —
+  hay que marcar `seguir=true` y encolar a mano.
+- Entity resolution es básica (match exacto por teléfono/nombre), no el sistema de aliases
+  inteligente que describe la sección Arquitectura.
+
+**Para ver el estado real de las colas en cualquier momento** (no confiar en contadores en
+memoria que se resetean con cada restart del backend): `GET /api/panel/queues`, o el frontend →
+página **Worker** → sección "Colas — estado real". Da pendiente/en_proceso/completado/fallido +
+ritmo real + ETA por etapa, calculado con una query directa a la base.
 
 ---
 
 ## Repositorio relacionado (proyecto previo)
 
-Proyecto privado en producción con stack PHP Laravel + Node + MySQL + Ollama + Whisper. Reusable de ahí para Sprint 2:
+Proyecto privado en producción (`workbench-reforma-2026`) con stack PHP Laravel + Node + MySQL +
+Ollama + Whisper. **Sigue en producción, con el mismo número de WhatsApp que usa el bridge de
+SecondBrain** (decisión aceptada: dos automatizaciones no oficiales sobre la misma cuenta,
+duplica riesgo de baneo — si da problemas, mover SecondBrain a un número secundario). Tiene un
+sidecar en Baileys (`wa-avatars-baileys`) para bajar fotos de perfil — el bot principal de ese
+proyecto sigue en whatsapp-web.js, no confundir con la migración de SecondBrain. Reusable de ahí
+para Sprint 2:
 
 - Patrón del bridge whatsapp-web.js (manejo de QR, sesión persistente vía volumen Docker, webhook al backend)
 - Ventana de mensajes consecutivos (acumular mensajes que llegan rápido en una sola unidad: 8s espera, 45s máxima, reset por inactividad 30 min)
@@ -289,21 +332,18 @@ Proyecto privado en producción con stack PHP Laravel + Node + MySQL + Ollama + 
 
 ## Lo que sigue (para Claude Code CLI)
 
-Próximos pasos inmediatos:
-1. Crear el repo en GitHub y hacer push del Sprint 0
-2. Levantar el stack en mi equipo Windows con la 3080
-3. Ejecutar el benchmark Gemma 4 vs Qwen3-VL con prompts reales
-4. Decidir modelo principal con datos en mano
-5. Arrancar Sprint 1 — Importación histórica de WhatsApp
+Pendientes reales, actualizados al 19 de agosto de 2026 (no los de Sprint 0, esos ya se hicieron):
 
-Cuando arranques con Sprint 1, los pasos serán:
-1. Crear modelos SQLAlchemy: `core.items`, `core.personas`, `media.attachments`, `processing.jobs`
-2. Generar primera migration con Alembic: `alembic revision --autogenerate -m "sprint 1: schema base"`
-3. Aplicar: `alembic upgrade head`
-4. Crear parser de exports `.txt` de WhatsApp en `backend/app/services/whatsapp_parser.py`
-5. Endpoint `/api/import/whatsapp/upload` para recibir el .txt
-6. Vista en Streamlit para subir y mapear participantes a contactos canónicos
-7. Tagger básico que llame a Ollama y guarde el resultado
+1. **Prompt del tagger mejorado** (recuperado de una v2 archivada, texto limpio de PII en
+   `docs/v2-hallazgos.md` §3) — evaluar si vale la pena portarlo también a `chat.py`.
+2. **Re-correr `backend/ab_embedding.py`** con `qwen3-embedding:0.6b` como challenger nuevo, una
+   vez que el backfill del histórico importado termine y haya volumen real para comparar calidad
+   (no solo velocidad, que ya se comparó y dio empate).
+3. **Cobertura de tests** — sigue en cero para casi todo lo construido después de Sprint 0.
+4. **Sprint 8 (Gmail)** y sprints posteriores — sin arrancar.
+5. Si el backfill nocturno del histórico ya terminó (chequear `GET /api/panel/queues`), decidir
+   si vale la pena taggear más allá de los últimos 3 meses que se encolaron, o dejarlo así y
+   taggear a demanda.
 
 ---
 
@@ -314,18 +354,8 @@ Cuando arranques una sesión nueva en Claude Code CLI, podés:
 ```
 He retomado este proyecto. Leé CLAUDE.md (o este contexto) y decime:
 1. Qué entendiste del estado actual
-2. Qué validamos del Sprint 0 ya
+2. Qué está corriendo ahora mismo (docker compose ps, GET /api/panel/queues)
 3. Qué tendríamos que hacer ahora
 ```
 
-O directamente:
-
-```
-Vamos al Sprint 1. Empecemos por los modelos SQLAlchemy del schema base.
-```
-
-O para validar Sprint 0:
-
-```
-Levantemos el Sprint 0 y validemos que todo está verde antes de avanzar.
-```
+O directamente sobre alguno de los pendientes de la sección "Lo que sigue".

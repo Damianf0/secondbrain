@@ -21,19 +21,26 @@ Un sistema de "segunda memoria" privada para indexar, procesar y consultar conve
 | Frontend (POC) | Streamlit |
 | Base relacional | PostgreSQL 16 + pgvector |
 | Vector DB | Qdrant |
-| Object storage | MinIO (S3-compatible) |
-| LLMs | Ollama + Gemma 4 12B / Qwen3-VL 8B |
-| Embeddings | qwen3-embedding 4B |
+| Vault (archivos crudos) | Filesystem local (volumen Docker, servido por el propio backend) |
+| LLMs | Ollama + qwen3:8b (chat/tagger) + qwen3-vl:8b (visión) |
+| Embeddings | bge-m3 |
 | Transcripción | Whisper (faster-whisper) |
-| Bridge WhatsApp | Node.js + whatsapp-web.js (Sprint 2) |
+| Bridge WhatsApp | Node.js + [Baileys](https://github.com/WhiskeySockets/Baileys) |
 | Conector Gmail | Python (sprint posterior) |
 | Containerización | Docker + Docker Compose |
 
 ## Estado
 
-🟡 **Sprint 0 — Setup base** (en progreso)
+🟢 **En uso activo** (última actualización: 19 de agosto de 2026)
 
-Ver [docs/sprints.md](docs/sprints.md) para el plan completo.
+El bridge de WhatsApp está conectado y capturando mensajes en vivo (texto, audio con
+transcripción, media). Hay un histórico importado de exports `.txt` corriendo su backfill de
+embeddings/tagging en background — mirá el estado real en `http://localhost:8501` → página
+**Worker** (o `GET /api/panel/queues`, que consulta la base en vivo, no un contador en memoria).
+
+> ⚠️ `docs/sprints.md`, `docs/architecture.md` y `docs/setup-windows.md` describen el diseño
+> original de Sprint 0 (mayo 2026) y **no siguieron el ritmo del código** — no son confiables
+> para saber "dónde estamos". Este README y `docs/v2-hallazgos.md` sí están al día.
 
 ## Hardware recomendado
 
@@ -60,18 +67,25 @@ docker compose up -d
 # 4. Esperar que se descarguen modelos (primer arranque, ~25 min)
 docker compose logs -f ollama-init
 
-# 5. Aplicar migraciones de DB
+# 5. Aplicar migraciones de DB (necesario en una base nueva -- si te salta un
+#    error "relation core.items does not exist" al usar el bridge, es esto)
 docker compose exec backend alembic upgrade head
 
-# 6. Abrir el panel
+# 6. Vincular el bridge de WhatsApp: abrí http://localhost:8501 → página
+#    "Bridge WhatsApp" y escaneá el QR (o configurá BRIDGE_PAIR_NUMBER en .env
+#    para emparejar por código en vez de QR). Usá un número secundario, no el
+#    principal -- es protocolo no oficial, mismo riesgo que cualquier bot de WA.
+
+# 7. Abrir el panel
 # http://localhost:8501
 ```
 
 ## Documentación
 
-- [Sprints y plan de desarrollo](docs/sprints.md)
-- [Arquitectura](docs/architecture.md)
-- [Setup en Windows](docs/setup-windows.md)
+- [Hallazgos recuperados de una v2 archivada](docs/v2-hallazgos.md) — lo más al día, además de este README
+- [Sprints y plan de desarrollo](docs/sprints.md) *(desactualizado, ver aviso en "Estado")*
+- [Arquitectura](docs/architecture.md) *(desactualizado)*
+- [Setup en Windows](docs/setup-windows.md) *(desactualizado)*
 
 ## Licencia
 
