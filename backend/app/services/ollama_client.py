@@ -3,8 +3,20 @@ Cliente Ollama.
 
 Wrapper sobre la lib oficial ollama-python con helpers convenientes
 para los casos de uso del proyecto: generación, embeddings, visión.
+
+Lock de VRAM: `_VRAM_LOCK` serializa las llamadas que van a GPU (generate,
+embed, embed_many, vision). En un equipo con 8GB de VRAM, dos inferencias
+simultáneas pueden competir por memoria y forzar swap entre modelos (más
+lento que esperar en cola). El lock reemplaza los parches puntuales que
+tenía v1 (`force_cpu` para el embed del chat, ventana nocturna para el
+caption) por una solución de fondo: todo lo que toca GPU espera su turno,
+con telemetría de cuánto esperó (`wait_vram_ms`) para poder ver si la cola
+se vuelve un cuello de botella real. Portado de una implementación ya
+probada en `workbench-reforma-2026` / v2 de este proyecto (ver
+rediseno-secondbrain.md §5.2).
 """
 
+import threading
 import time
 from typing import Any
 
@@ -16,6 +28,9 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
+
+# Serializa el acceso a GPU entre todas las instancias de OllamaService.
+_VRAM_LOCK = threading.Lock()
 
 # Modelos con "thinking" / reasoning interno. Para nuestro uso (extracción JSON)
 # el thinking solo gasta tokens y arruina la latencia, así que lo apagamos.
@@ -70,42 +85,49 @@ class OllamaService:
         """
         model = model or settings.ollama_model_primary
 
-        start = time.time()
-        try:
-            messages = []
-            if system:
-                messages.append({"role": "system", "content": system})
-            messages.append({"role": "user", "content": prompt})
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
 
-            kwargs = {
-                "model": model,
-                "messages": messages,
-                "options": {"temperature": temperature},
-            }
-            if format is not None:
-                kwargs["format"] = format
-            # Apagar el reasoning interno en modelos thinking (qwen3, etc.)
-            if _is_thinking_model(model):
-                kwargs["think"] = False
+        kwargs = {
+            "model": model,
+            "messages": messages,
+            "options": {"temperature": temperature},
+        }
+        if format is not None:
+            kwargs["format"] = format
+        # Apagar el reasoning interno en modelos thinking (qwen3, etc.)
+        if _is_thinking_model(model):
+            kwargs["think"] = False
 
-            response = self.client.chat(**kwargs)
-            duration_ms = int((time.time() - start) * 1000)
+        wait_start = time.time()
+        with _VRAM_LOCK:
+            wait_ms = int((time.time() - wait_start) * 1000)
+            if wait_ms > 50:
+                logger.info("ollama_acquired_vram_lock", model=model, wait_ms=wait_ms, op="generate")
 
-            return {
-                "response": response.message.content,
-                "model": response.model,
-                "duration_ms": duration_ms,
-                "tokens_input": response.prompt_eval_count or 0,
-                "tokens_output": response.eval_count or 0,
-                "tokens_per_second": (
-                    round(response.eval_count / (response.eval_duration / 1e9), 2)
-                    if response.eval_count and response.eval_duration
-                    else None
-                ),
-            }
-        except Exception as e:
-            logger.error("ollama_generate_failed", model=model, error=str(e))
-            raise
+            start = time.time()
+            try:
+                response = self.client.chat(**kwargs)
+                duration_ms = int((time.time() - start) * 1000)
+
+                return {
+                    "response": response.message.content,
+                    "model": response.model,
+                    "duration_ms": duration_ms,
+                    "tokens_input": response.prompt_eval_count or 0,
+                    "tokens_output": response.eval_count or 0,
+                    "tokens_per_second": (
+                        round(response.eval_count / (response.eval_duration / 1e9), 2)
+                        if response.eval_count and response.eval_duration
+                        else None
+                    ),
+                    "wait_vram_ms": wait_ms,
+                }
+            except Exception as e:
+                logger.error("ollama_generate_failed", model=model, error=str(e))
+                raise
 
     def embed(
         self,
@@ -130,39 +152,67 @@ class OllamaService:
             dict con 'embedding' (list[float]), 'dimensions', 'duration_ms'
         """
         model = model or settings.ollama_model_embedding
-        options = {"num_gpu": 0} if force_cpu else None
 
-        start = time.time()
-        try:
-            if options:
-                response = self.client.embed(model=model, input=text, options=options)
-            else:
+        # force_cpu no compite por VRAM — no necesita el lock.
+        if force_cpu:
+            start = time.time()
+            try:
+                response = self.client.embed(model=model, input=text, options={"num_gpu": 0})
+                duration_ms = int((time.time() - start) * 1000)
+                embedding = response.embeddings[0] if response.embeddings else []
+                return {
+                    "embedding": embedding,
+                    "dimensions": len(embedding),
+                    "model": model,
+                    "duration_ms": duration_ms,
+                    "wait_vram_ms": 0,
+                }
+            except Exception as e:
+                logger.error("ollama_embed_cpu_failed", model=model, error=str(e))
+                raise
+
+        wait_start = time.time()
+        with _VRAM_LOCK:
+            wait_ms = int((time.time() - wait_start) * 1000)
+            if wait_ms > 50:
+                logger.info("ollama_acquired_vram_lock", model=model, wait_ms=wait_ms, op="embed")
+
+            start = time.time()
+            try:
                 response = self.client.embed(model=model, input=text)
-            duration_ms = int((time.time() - start) * 1000)
+                duration_ms = int((time.time() - start) * 1000)
 
-            embedding = response.embeddings[0] if response.embeddings else []
+                embedding = response.embeddings[0] if response.embeddings else []
 
-            return {
-                "embedding": embedding,
-                "dimensions": len(embedding),
-                "model": model,
-                "duration_ms": duration_ms,
-            }
-        except Exception as e:
-            logger.error("ollama_embed_failed", model=model, error=str(e))
-            raise
+                return {
+                    "embedding": embedding,
+                    "dimensions": len(embedding),
+                    "model": model,
+                    "duration_ms": duration_ms,
+                    "wait_vram_ms": wait_ms,
+                }
+            except Exception as e:
+                logger.error("ollama_embed_failed", model=model, error=str(e))
+                raise
 
     def embed_many(self, texts: list[str], model: str | None = None) -> list[list[float]]:
         """Embebe una lista de textos en una sola llamada. Devuelve lista de vectores (en orden)."""
         model = model or settings.ollama_model_embedding
         if not texts:
             return []
-        try:
-            response = self.client.embed(model=model, input=texts)
-            return list(response.embeddings or [])
-        except Exception as e:
-            logger.error("ollama_embed_many_failed", model=model, n=len(texts), error=str(e))
-            raise
+
+        wait_start = time.time()
+        with _VRAM_LOCK:
+            wait_ms = int((time.time() - wait_start) * 1000)
+            if wait_ms > 50:
+                logger.info("ollama_acquired_vram_lock", model=model, wait_ms=wait_ms, op="embed_many")
+
+            try:
+                response = self.client.embed(model=model, input=texts)
+                return list(response.embeddings or [])
+            except Exception as e:
+                logger.error("ollama_embed_many_failed", model=model, n=len(texts), error=str(e))
+                raise
 
     def vision(
         self,
@@ -205,21 +255,28 @@ class OllamaService:
         if _is_thinking_model(model):
             kwargs["think"] = False
 
-        start = time.time()
-        try:
-            response = self.client.chat(**kwargs)
-            duration_ms = int((time.time() - start) * 1000)
+        wait_start = time.time()
+        with _VRAM_LOCK:
+            wait_ms = int((time.time() - wait_start) * 1000)
+            if wait_ms > 50:
+                logger.info("ollama_acquired_vram_lock", model=model, wait_ms=wait_ms, op="vision")
 
-            return {
-                "response": response.message.content,
-                "model": response.model,
-                "duration_ms": duration_ms,
-                "tokens_input": response.prompt_eval_count or 0,
-                "tokens_output": response.eval_count or 0,
-            }
-        except Exception as e:
-            logger.error("ollama_vision_failed", model=model, error=str(e))
-            raise
+            start = time.time()
+            try:
+                response = self.client.chat(**kwargs)
+                duration_ms = int((time.time() - start) * 1000)
+
+                return {
+                    "response": response.message.content,
+                    "model": response.model,
+                    "duration_ms": duration_ms,
+                    "tokens_input": response.prompt_eval_count or 0,
+                    "tokens_output": response.eval_count or 0,
+                    "wait_vram_ms": wait_ms,
+                }
+            except Exception as e:
+                logger.error("ollama_vision_failed", model=model, error=str(e))
+                raise
 
     async def list_models_detailed(self) -> list[dict[str, Any]]:
         """Lista los modelos con detalles (tamaño, fecha de modificación)."""
