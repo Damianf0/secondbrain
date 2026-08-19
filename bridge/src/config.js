@@ -16,11 +16,21 @@ export const config = {
   backendUrl: (process.env.BACKEND_URL || "http://backend:8000").replace(/\/$/, ""),
   ingestPath: process.env.BRIDGE_INGEST_PATH || "/api/bridge/whatsapp/ingest",
 
-  // Dónde persiste la sesión de WhatsApp (debe ser un volumen Docker)
+  // Dónde persiste la sesión de WhatsApp (debe ser un volumen Docker).
+  // Baileys guarda las credenciales multi-file en un subdirectorio de acá
+  // (ver whatsapp.js) para no mezclarse con el dead-letter.jsonl de backend.js.
   sessionPath: process.env.BRIDGE_SESSION_PATH || "/app/session",
 
-  // Chromium del sistema (no el que descarga puppeteer)
-  chromiumPath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
+  // Nivel de log de Baileys (pino). "warn" por default: en "info"/"debug" es muy verboso.
+  logLevel: process.env.BRIDGE_LOG_LEVEL || "warn",
+
+  // Emparejamiento por código en vez de QR: si viene un número acá, en el primer
+  // arranque el bridge pide un código de 8 caracteres (se ve en los logs) para
+  // escribir en el cel — WhatsApp > Dispositivos vinculados > Vincular con
+  // número de teléfono — en vez de escanear el QR. Formato: solo dígitos, con
+  // código de país (ej. 5492234567890). Patrón tomado de wa-avatars-baileys
+  // (workbench-reforma-2026), que ya lo usa en producción.
+  pairNumber: (process.env.BRIDGE_PAIR_NUMBER || "").replace(/\D/g, ""),
 
   // Si true, también captura mensajes salientes (los que mando yo)
   captureOutgoing: envBool("BRIDGE_CAPTURE_OUTGOING", true),

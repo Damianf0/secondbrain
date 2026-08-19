@@ -1,7 +1,7 @@
 """Router del bridge WhatsApp en vivo (Sprint 2).
 
 Recibe mensajes capturados en tiempo real por el container `bridge`
-(whatsapp-web.js) y los persiste como `Item`:
+(Baileys) y los persiste como `Item`:
 
   - resuelve la `Persona` del remitente contra los contactos canónicos
     (match por teléfono E.164, después por nombre); si no existe la crea

@@ -9,7 +9,7 @@
 #   - whisper     : Transcripción de audio
 #   - backend     : FastAPI Python
 #   - frontend    : Streamlit panel admin
-#   - bridge      : Bridge WhatsApp en vivo (whatsapp-web.js) — Sprint 2
+#   - bridge      : Bridge WhatsApp en vivo (Baileys) — Sprint 2
 #   - ollama-init : One-shot que descarga modelos al inicio
 # =====================================================
 
@@ -269,7 +269,7 @@ services:
       - secondbrain-net
 
   # ---------------------------------------------------
-  # Bridge WhatsApp en vivo (whatsapp-web.js)
+  # Bridge WhatsApp en vivo (Baileys)
   # ---------------------------------------------------
   bridge:
     build:
@@ -283,15 +283,15 @@ services:
       BRIDGE_PORT: 3001
       BACKEND_URL: http://backend:8000
       BRIDGE_SESSION_PATH: /app/session
-      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      BRIDGE_LOG_LEVEL: ${BRIDGE_LOG_LEVEL:-warn}
+      BRIDGE_PAIR_NUMBER: ${BRIDGE_PAIR_NUMBER:-}
       BRIDGE_CAPTURE_OUTGOING: ${BRIDGE_CAPTURE_OUTGOING:-true}
       BRIDGE_INCLUDE_BROADCASTS: ${BRIDGE_INCLUDE_BROADCASTS:-false}
       TZ: ${TZ:-America/Argentina/Buenos_Aires}
     volumes:
-      - ./data/whatsapp-session:/app/session  # sesión de WhatsApp persistida
+      - ./data/whatsapp-session:/app/session  # sesión de WhatsApp persistida (Baileys multi-file auth)
     ports:
       - "${BRIDGE_PORT:-3001}:3001"
-    shm_size: "1gb"  # chromium necesita /dev/shm holgado
     networks:
       - secondbrain-net
 

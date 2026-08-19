@@ -1,7 +1,7 @@
 """
 Página del Bridge WhatsApp en vivo (Sprint 2).
 
-- Muestra el estado de conexión del container `bridge` (whatsapp-web.js)
+- Muestra el estado de conexión del container `bridge` (Baileys)
 - Si hace falta vincular el dispositivo, muestra el QR para escanear
 - Muestra contadores y los últimos mensajes capturados en tiempo real
 """
@@ -17,7 +17,7 @@ BRIDGE_URL = os.getenv("BRIDGE_URL", "http://bridge:3001")
 
 st.set_page_config(page_title="Bridge WhatsApp", page_icon="📡", layout="wide")
 st.title("📡 Bridge WhatsApp")
-st.caption("Sprint 2 — Captura de mensajes en tiempo real (whatsapp-web.js)")
+st.caption("Sprint 2 — Captura de mensajes en tiempo real (Baileys)")
 
 # ---------------------------------------------------------------------------
 # Controles

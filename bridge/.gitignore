@@ -1,6 +1,4 @@
 node_modules/
 npm-debug.log*
 session/
-.wwebjs_auth/
-.wwebjs_cache/
 *.log

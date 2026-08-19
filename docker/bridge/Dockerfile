@@ -1,20 +1,18 @@
 # =====================================================
 # SecondBrain Bridge WhatsApp - Dockerfile
-# Node.js 22 + whatsapp-web.js + Chromium (puppeteer)
+# Node.js 22 + Baileys (WebSocket directo al protocolo de WhatsApp Web,
+# sin Chromium/Puppeteer)
 # =====================================================
 
 FROM node:22-bookworm-slim AS base
 
-# Usar el Chromium del sistema, no el que descarga puppeteer
-ENV PUPPETEER_SKIP_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
-    NODE_ENV=production
+ENV NODE_ENV=production
 
-# Chromium + fuentes + tini (init liviano para reapear procesos zombie de chromium)
+# tini: init liviano para forwardear señales correctamente (SIGTERM/SIGINT)
+# git: alguna dependencia transitiva de Baileys se resuelve desde un repo git en npm install
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      chromium \
       ca-certificates \
-      fonts-liberation \
+      git \
       tini \
     && rm -rf /var/lib/apt/lists/*
 
