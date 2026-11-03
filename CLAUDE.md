@@ -359,3 +359,10 @@ He retomado este proyecto. Leé CLAUDE.md (o este contexto) y decime:
 ```
 
 O directamente sobre alguno de los pendientes de la sección "Lo que sigue".
+
+## Seguimiento del proyecto
+- Slug en el MCP Gestion Proyectos: `secondbrain`
+- Al empezar: proyecto_ficha con ese slug y, si tiene contexto, contexto_leer.
+- Al terminar una tarea: bitacora_registrar con lo hecho y el proximo_paso. Pasá equipo = hostname, directorio = carpeta absoluta del repo y origen = claude-code. Las decisiones van como tipo decision.
+- Si cambió la arquitectura, las rutas, las convenciones o los pendientes: contexto_guardar partiendo de contexto_leer.
+- Si cambia dónde corre, la URL, el repo o el stack: proyecto_guardar.
